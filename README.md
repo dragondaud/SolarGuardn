@@ -5,16 +5,16 @@
 Master repository: https://github.com/dragondaud/SolarGuardn
 
 ### Features
-ESP8266/Arduino platform
-Over-the-Air (OTA) updates from Arduino IDE
-BME280 to read Temperature, Humidity, Pressure
-Soil moisture reading
-AdafruitIO/MQTT data logging
-WiFi client
-WiFi web server
-Web server status page
-Pump control with SONOFF/Tasmota
-SPIFFS config file
+- ESP8266/Arduino platform
+- Over-the-Air (OTA) updates from Arduino IDE
+- BME280 to read Temperature, Humidity, Pressure
+- Soil moisture reading
+- AdafruitIO/MQTT data logging
+- WiFi client
+- WiFi web server
+- Web server status page
+- Pump control with SONOFF/Tasmota
+- SPIFFS config file
 
 My code is released to public domain, while libraries retain their respective licenses.
 
