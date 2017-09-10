@@ -1,5 +1,5 @@
 # SolarGuardn
-## beta 0.7.00 09/09/2017
+## beta 0.7.01 09/10/2017
 ### by David Denney <dragondaud@gmail.com>
 
 Master repository: https://github.com/dragondaud/SolarGuardn
