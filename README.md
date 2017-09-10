@@ -24,6 +24,7 @@ using MQTT, either directly to AdafruitIO or through a local MQTT broker. Webser
 provides direct access to current data, as well as firmware updating.
 
 Press FLASH button on NodeMCU to enter moisture sensor calibration mode, adjust input pot, monitor serial
+
 Press FLASH button twice rapidly to store current running config to SPIFFS
 
 **Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP**
