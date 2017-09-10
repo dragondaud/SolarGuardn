@@ -29,4 +29,5 @@ Press FLASH button twice rapidly to store current running config to SPIFFS
 **Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP**
 
 Some of the code is based on examples from the ESP8266 core and other libraries.
+
 Install Arduino core for ESP8266 from: https://github.com/esp8266/Arduino
