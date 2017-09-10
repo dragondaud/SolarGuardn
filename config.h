@@ -1,6 +1,8 @@
 /* SolarGuardn config.h */
 
-#define VERSION   "0.7.00"
+#define VERSION     "0.7.01"
+#define DEBUG
+#define USERCONFIG  "/temp/userconfig.h"  // include user config from outside project directory
 
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
 #include <ESP8266mDNS.h>        // https://github.com/esp8266/Arduino
@@ -14,6 +16,9 @@
 WiFiServer server(80);
 
 /** user config **/
+#ifdef USERCONFIG
+#include USERCONFIG
+#else
 String host = "SolarGuardn";
 String WIFI_SSID = "SSID";        // set WiFi and AIO here
 String WIFI_PASS = "PASSWORD";    // still working on runtime config
@@ -22,8 +27,9 @@ String IO_KEY = "AIO-key";
 String OTA_PASS = "";
 String onURL = "http://sonoff.fqdn/cm?cmnd=Power%20on";
 String offURL = "http://sonoff.fqdn/cm?cmnd=Power%20off";
-int TZ = 0;
+#endif
 
+int TZ = -6;
 int Air = 400;                    // value in air
 int Water = 800;                  // value in water
 int interval = (Water - Air) / 3; // split into dry, wet, soaked
@@ -71,6 +77,7 @@ int temp_l = 0, humid_l = 0;
 int relay = 0, water = 0;
 int pressure = 0, pressure_l = 0;
 int caliCount = 0;
+int deBounce = 0;
 
 volatile int buttonState = HIGH;
 

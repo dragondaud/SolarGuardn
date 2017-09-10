@@ -1,35 +1,40 @@
 /**
-  SolarGuardn v0.7.00
+  SolarGuardn v0.7.01
   by David Denney
 
-  code is released to public domain, while libraries retain their respective licenses.
+  My code is released to public domain, while libraries retain their respective licenses.
+  Master repository: https://github.com/dragondaud/SolarGuardn
+
+  See config.h for configurable settings and all includes.
 
   Designed to run on an ESP-12E NodeMCU board, the SolarGuardn monitors soil conditions,
-  ambient temperature, humidity and atmospheric pressure. It reports collected data,
-  using MQTT, either directly to AdafruitIO or through a local MQTT broker. Webserver
-  provides direct access to current data, as well as firmware updating.
+  ambient temperature, humidity and atmospheric pressure. Reports collected data,
+  using MQTT, to AdafruitIO. Webserver provides direct access to current data.
 
   Press FLASH button on NodeMCU to enter moisture sensor calibration mode, adjust input pot, monitor serial
   Press FLASH button twice rapidly to store current running config to SPIFFS
 
-  Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M(3M), Speed: 115200, Port: serial or OTA IP
+  Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP
 
   some of this code is based on examples from the ESP8266, ArduinoOTA and other libraries
+  Install Arduino core for ESP8266 from: https://github.com/esp8266/Arduino
 */
 
 #include "config.h"
 
 void setup() {
-  Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
+  Serial.begin(115200);             // Initialize Serial at 115200bps, to match bootloader
   //Serial.setDebugOutput(true);
-  while (!Serial);                   // wait for Serial to become available
+  while (!Serial);                  // wait for Serial to become available
   Serial.println();
   Serial.print("SolarGuardn v");
   Serial.println(VERSION);
 
   /* mount flash filesystem for configuration file */
   if (SPIFFS.begin()) {   // initialize SPIFFS for config file
+#ifdef DEBUG
     Serial.println("SPIFFS mounted.");
+#endif
   }
   else {
     Serial.println("Could not mount file system!");
@@ -38,9 +43,11 @@ void setup() {
   if (!SPIFFS.exists(CONFIG)) Serial.println("Config file not found");
   else {
     File f = SPIFFS.open(CONFIG, "r");
+#ifdef DEBUG
     Serial.print("CONFIG: ");
     Serial.print(f.size());
     Serial.println(" bytes");
+#endif
     int c = 0;
     while (f.available()) {
       String t = f.readStringUntil('\n');
@@ -51,32 +58,47 @@ void setup() {
     f.close();
   }
 
+#ifdef DEBUG
   Serial.print(ESP.getFreeSketchSpace());
   Serial.println(" free program space");
+#endif
 
   /* AdafruitIO */
+#ifdef DEBUG
   Serial.print("Connecting to Adafruit IO");
+#endif
   /* add runtime config of AdafruitIO_WiFi io(IO_USERNAME.c_str(), IO_KEY.c_str(), WIFI_SSID.c_str(), WIFI_PASS.c_str()); */
   WiFi.hostname(host.c_str());
   io.connect();
   while (io.status() < AIO_CONNECTED) {
+#ifdef DEBUG
     Serial.print(".");
+#endif
     delay(500);
   }
+#ifdef DEBUG
   Serial.println();
   Serial.println(io.statusText());
+#endif
+
   IOrelay->onMessage(handleMessage);		// subscribe to relay
 
   /* configTime sntp */
   configTime((TZ * 3600), 0, "pool.ntp.org", "time.nist.gov");
+#ifdef DEBUG
   Serial.print("\nSyncronize clock with sntp...");
+#endif
   while (!time(nullptr)) {
     delay(1000);
+#ifdef DEBUG
     Serial.print(".");
+#endif
   }
+#ifdef DEBUG
   Serial.println();
   time_t now = time(nullptr);
   Serial.println(ctime(&now));
+#endif
 
   /* ArduinoOTA config */
   // Hostname defaults to esp8266-[ChipID]
@@ -102,15 +124,20 @@ void setup() {
     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
     else Serial.println("unknown error");
+    ESP.restart();
   });
   ArduinoOTA.begin();
   /* end ArduinoOTA */
 
+#ifdef DEBUG
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+#endif
 
   server.begin(); /* start web server */
+#ifdef DEBUG
   Serial.println("WWW server started");
+#endif
 
   Wire.begin(I2C_DAT, I2C_CLK);
   Wire.setClock(100000);
@@ -128,19 +155,23 @@ void setup() {
   pinMode(BUTTON, INPUT);                         // flash button
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interupt each press
 
+#ifdef DEBUG
   Serial.printf("Moisture: %d > Soaked > %d > Wet > %d > Dry > %d\r\n", Water, Water - interval, Air + interval, Air);
+#endif
   Serial.println("Ready");
   delay(1000);
 }
 
 void readConfig(String input) {
   int e = input.indexOf("=") + 1;
+#ifdef DEBUG
   if ((e == 1) || (e >= input.length())) {
     Serial.print("#");
     Serial.println(input);
     return;
   }
   else Serial.println(input);
+#endif
   if (input.startsWith("host")) host = input.substring(e);
   else if (input.startsWith("TZ")) TZ = input.substring(e).toInt();
   else if (input.startsWith("Air")) Air = input.substring(e).toInt();
@@ -181,31 +212,23 @@ void writeConfig() {
 
 void handleMessage(AdafruitIO_Data *data) {				// handle subscribed relay message
   String i = String(data->value());
+#ifdef DEBUG
   Serial.print("RELAY = ");
   Serial.print(i);
   Serial.println();
+#endif
   if (i == "ON") sonoff("on");
   else sonoff("off");
 }
 
-void handleSerial() {               /** process serial IO, add menu and commands like reboot **/
-  int incomingByte = 0;             // byte buffer for serial read
-  while (Serial.available()) {      // if anything in serial buffer, read and print
-    incomingByte = Serial.read();
-    if (incomingByte == 13 || incomingByte == 10) Serial.print("\r\n");
-    else if (incomingByte < 32) {
-      Serial.print(" x");
-      Serial.print(incomingByte, HEX);
-      Serial.print(" ");
-    }
-    else Serial.write(incomingByte);
-  }
-}
-
 void handleButton() {
+  if (millis() - deBounce < 50) return;   // debounce button
   buttonState = digitalRead(BUTTON);      // read state of flash button
   if (buttonState == LOW) return;         // button down, do nothing
-  else caliCount += 12;                   // button release, enable calibrate for 12 loops (1 min)
+  else {
+    caliCount += 12;                      // each button release, calibrate +12 loops (1 min)
+    deBounce = millis();                  // and debounce
+  }
 }
 
 void sonoff(String cmd) {         // control sonoff module running Sonoff-Tasmota
@@ -213,25 +236,32 @@ void sonoff(String cmd) {         // control sonoff module running Sonoff-Tasmot
   if (cmd == "on") http.begin(onURL);
   else http.begin(offURL);
   int httpCode = http.GET();
+#ifdef DEBUG
   if (httpCode > 0) {
     Serial.printf("Relay %s [HTTP] GET: %d\r\n", cmd.c_str(), httpCode);
-    //if (httpCode == HTTP_CODE_OK) Serial.println(http.getString());
   } else {
     Serial.printf("[HTTP] GET failed: %d\r\n", http.errorToString(httpCode).c_str());
   }
+#endif
   http.end();
 }
 
 void relayOff(String stat) {
+#ifdef DEBUG
   Serial.print(" ");
   Serial.print(stat);
+#endif
   if (relay != false) {
+#ifdef DEBUG
     Serial.println(", relay open (OFF).");
+#endif
     sonoff("off");
     relay = false;
     IOwater->save(stat);
   }
+#ifdef DEBUG
   else Serial.println(".");
+#endif
 }
 
 void calibrate() {
@@ -274,11 +304,10 @@ void readBME() {
 void doMe() {                             // called every 5 seconds to handle background tasks
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
   io.run();                               // and handle AdafruitIO messages
-  handleSerial();                         // read and display serial
   WiFiClient client = server.available(); // and serve web requests
   if (client) handleWWW(client);
-  if (caliCount >= 24) {                  // double press flash to save config
-    for (int i = 0; i < 5; i++) {
+  if (caliCount >= 24 ) {                  // double press flash to save config
+    for (int i = 0; i < 10; i++) {
       digitalWrite(LED_BUILTIN, LOW);    // flash LED so we know it worked
       delay(20);
       digitalWrite(LED_BUILTIN, HIGH);
@@ -294,6 +323,7 @@ void loop() {                       /** MAIN LOOP **/
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
   doMe();                           // non-sensor loop stuff
   readBME();
+#ifdef DEBUG
   Serial.print(temp);
   if (Fahrenheit) Serial.print("°F, ");
   else Serial.print("°C, ");
@@ -301,52 +331,68 @@ void loop() {                       /** MAIN LOOP **/
   Serial.print("% RH, ");
   Serial.print(pressure / 100.0F, 2);
   Serial.print(" inHg, ");
-
+#endif
   soil = readMoisture();
+#ifdef DEBUG
   Serial.print(soil);
+#endif
   if (soil > (Water - interval)) relayOff("Soaked");
   else if (soil > (Air + interval)) relayOff("Wet");
   else {
+#ifdef DEBUG
     Serial.print(" Dry");
+#endif
     if (relay != true) {
+#ifdef DEBUG
       Serial.println(", relay closed (ON).");
+#endif
       sonoff("on");
       relay = true;
       IOwater->save("Dry");
     }
+#ifdef DEBUG
     else Serial.println(".");
+#endif
   }
 
   if (soil != soil_l) {                   // if moisture level has changed then
+#ifdef DEBUG
     Serial.printf("save moisture %d", soil);
     Serial.println();
+#endif
     IOmoist->save(soil);                  // store soil resistance
     soil_l = soil;
   }
 
   int t = round(temp);                    // round off temperature
   if (t != temp_l && t < 120) {           // if temp has changed and is valid then
+#ifdef DEBUG
     Serial.printf("save temperature %d", t);
     if (Fahrenheit) Serial.println("°F");
     else Serial.println("°C");
+#endif
     IOtemp->save(t);                      // store rounded temp
     temp_l = t;
   }
 
   int h = round(humid);                   // round off humidity
   if (h != humid_l && h <= 100) {         // if humidity has changed and is valid then
+#ifdef DEBUG
     Serial.printf("save humidity %d", h);
     Serial.println("%RH");
+#endif
     IOhumid->save(h);                     // store rounded humidity
     humid_l = h;
   }
 
   if (pressure != pressure_l && pressure <= 3000) { // if pressure has changed and is valid then
-    Serial.print("save pressure ");
     char p[10];
     dtostrf(pressure / 100.0F, 5, 2, p);            // convert to string with two decimal places
+#ifdef DEBUG
+    Serial.print("save pressure ");
     Serial.print(p);
     Serial.println(" inHg");
+#endif
     IOpressure->save(p);                            // store inHg pressure
     pressure_l = pressure;
   }
@@ -354,34 +400,44 @@ void loop() {                       /** MAIN LOOP **/
   digitalWrite(LED_BUILTIN, HIGH);          // turn off LED before sleep loop
 
   for (int x = 0; x < 12; x++) {  // sleeping loop between moisture readings to save power
+#ifdef DEBUG
     time_t now = time(nullptr);
     String t = ctime(&now);
     t.trim();
     Serial.print(t);
-    Serial.print(" \r");           // Arduino serial monitor does not support CR, use PuTTY
+    Serial.print(" (");
+    Serial.print(ESP.getFreeHeap(), DEC);
+    Serial.print(" free) \r");           // Arduino serial monitor does not support CR, use PuTTY
+#endif
     doMe();
     delay(5000);                  // delay() allows background tasks to run each invocation
   }
 }
 
-void handleWWW(WiFiClient client) {   // Any request serves up status page
+void handleWWW(WiFiClient client) {         // Any request serves up status page
   if (!client.available()) return;
   String req = client.readStringUntil('\r');
+  req.toUpperCase();
+  if (req.startsWith("GET /FAVICON.ICO")) { // except ignore favicon.ico
+    client.stop();
+    return;
+  }
+  else if (req.startsWith("GET /RESET")) ESP.restart();  // and RESET will restart ESP
+#ifdef DEBUG
   Serial.println(req);
+#endif
   client.flush();
   char buf[1000];
+  char p[10];
+  dtostrf(pressure / 100.0F, 5, 2, p);
   time_t now = time(nullptr);
   String t = ctime(&now);
   t.trim();
-  char p[10];
-  dtostrf(pressure / 100.0F, 5, 2, p);
-  // Serial.printf("%s %s %u %u %s %u \r\n", VERSION, t.c_str(), temp_l, humid_l, p, soil_l);
-
   snprintf(buf, sizeof(buf),
            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n\
 <html>\
   <head>\
-    <meta http-equiv='refresh' content='20'/>\
+    <meta http-equiv='refresh' content='60'/>\
     <title>SolarGuardn</title>\
     <style>\
       body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
@@ -397,7 +453,13 @@ void handleWWW(WiFiClient client) {   // Any request serves up status page
   </body>\
 </html>",
            VERSION, t.c_str(), temp_l, humid_l, p, soil);
+  client.flush();
   client.print(buf);
-  Serial.printf("WWW status sent (%d bytes) at %s\r\n", strlen(buf), t.c_str());
+#ifdef DEBUG
+  Serial.print(client.remoteIP());
+  Serial.printf(" GET status (%d bytes) at %s, freemem: ", strlen(buf), t.c_str());
+  Serial.println(ESP.getFreeHeap(), DEC);
+#endif
+  client.stop();
 }
 
