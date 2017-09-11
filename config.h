@@ -6,8 +6,8 @@
 
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
 #include <ESP8266mDNS.h>        // https://github.com/esp8266/Arduino
-#include <ESP8266HTTPClient.h>  //
-#include <WiFiUdp.h>            //
+#include <ESP8266HTTPClient.h>  // use current from git, not 2.3.0 release
+#include <WiFiUdp.h>            // 
 #include <ArduinoOTA.h>         // provides each the above libraries
 #include <time.h>
 #include <Math.h>
@@ -56,8 +56,6 @@ AdafruitIO_Feed *IOwater =    io.feed("watering");
 AdafruitIO_Feed *IOrelay =    io.feed("relay");
 AdafruitIO_Feed *IOfeed07 =   io.feed("feed07");
 AdafruitIO_Feed *IOfeed08 =   io.feed("feed08");
-AdafruitIO_Feed *IOfeed09 =   io.feed("feed09");
-AdafruitIO_Feed *IOfeed10 =   io.feed("feed10");
 
 /** pin defs **/
 #define MOIST     A0    // analog input from soil moisture sensor

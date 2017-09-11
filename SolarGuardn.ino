@@ -17,14 +17,14 @@
   Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP
 
   some of this code is based on examples from the ESP8266, ArduinoOTA and other libraries
-  Install Arduino core for ESP8266 from: https://github.com/esp8266/Arduino
+  Install Arduino core for ESP8266 'git version' from: https://github.com/esp8266/Arduino#using-git-version
 */
 
 #include "config.h"
 
 void setup() {
   Serial.begin(115200);             // Initialize Serial at 115200bps, to match bootloader
-  //Serial.setDebugOutput(true);
+  // Serial.setDebugOutput(true);   // uncomment for extra library debugging
   while (!Serial);                  // wait for Serial to become available
   Serial.println();
   Serial.print("SolarGuardn v");
@@ -48,7 +48,6 @@ void setup() {
     Serial.print(f.size());
     Serial.println(" bytes");
 #endif
-    int c = 0;
     while (f.available()) {
       String t = f.readStringUntil('\n');
       t.trim();
@@ -397,6 +396,9 @@ void loop() {                       /** MAIN LOOP **/
     pressure_l = pressure;
   }
 
+  IOfeed07->save(random(255));
+  IOfeed08->save(random(1023));
+
   digitalWrite(LED_BUILTIN, HIGH);          // turn off LED before sleep loop
 
   for (int x = 0; x < 12; x++) {  // sleeping loop between moisture readings to save power
@@ -414,30 +416,41 @@ void loop() {                       /** MAIN LOOP **/
   }
 }
 
-void handleWWW(WiFiClient client) {         // Any request serves up status page
+void handleWWW(WiFiClient client) {           // default request serves STATUS page
   if (!client.available()) return;
+  char buf[1000];
+  char p[10];
   String req = client.readStringUntil('\r');
-  req.toUpperCase();
-  if (req.startsWith("GET /FAVICON.ICO")) { // except ignore favicon.ico
-    client.stop();
-    return;
-  }
-  else if (req.startsWith("GET /RESET")) ESP.restart();  // and RESET will restart ESP
 #ifdef DEBUG
+  Serial.println();
   Serial.println(req);
 #endif
   client.flush();
-  char buf[1000];
-  char p[10];
+  req.toUpperCase();
+  if (req.startsWith("GET /FAVICON.ICO")) {   // send favicon.ico from data directory
+    File f = SPIFFS.open("/favicon.ico", "r");
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: image/png");
+    client.print("Content-Length: ");
+    client.println(f.size());
+    client.println();
+    client.write(f);
+    client.flush();
+    client.stop();
+    f.close();
+    return;
+  }
+  else if (req.startsWith("GET /RESET")) ESP.restart();  // GET /RESET will restart ESP
   dtostrf(pressure / 100.0F, 5, 2, p);
   time_t now = time(nullptr);
   String t = ctime(&now);
-  t.trim();
+  t.trim();                   // build STATUS page
   snprintf(buf, sizeof(buf),
-           "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n\
+           "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\
 <html>\
   <head>\
     <meta http-equiv='refresh' content='60'/>\
+    <link rel='icon' href='favicon.ico' type='image/png' />\
     <title>SolarGuardn</title>\
     <style>\
       body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
@@ -451,14 +464,11 @@ void handleWWW(WiFiClient client) {         // Any request serves up status page
     <p>Abs Pressure: %s inHg</p>\
     <p>Soil Moisture: %u </p>\
   </body>\
-</html>",
-           VERSION, t.c_str(), temp_l, humid_l, p, soil);
-  client.flush();
+</html>\r\n", VERSION, t.c_str(), temp_l, humid_l, p, soil);
   client.print(buf);
 #ifdef DEBUG
   Serial.print(client.remoteIP());
-  Serial.printf(" GET status (%d bytes) at %s, freemem: ", strlen(buf), t.c_str());
-  Serial.println(ESP.getFreeHeap(), DEC);
+  Serial.printf(" GET status (%d bytes) at %s \r\n", strlen(buf), t.c_str());
 #endif
   client.stop();
 }
