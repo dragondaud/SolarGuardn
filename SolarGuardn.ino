@@ -427,10 +427,10 @@ void handleWWW(WiFiClient client) {           // default request serves STATUS p
 #endif
   client.flush();
   req.toUpperCase();
-  if (req.startsWith("GET /FAVICON.ICO")) {   // send favicon.ico from data directory
+  if (req.startsWith("GET /FAV")) {   // send favicon.ico from data directory
     File f = SPIFFS.open("/favicon.ico", "r");
     client.println("HTTP/1.1 200 OK");
-    client.println("Content-Type: image/png");
+    client.println("Content-Type: image/x-icon");
     client.print("Content-Length: ");
     client.println(f.size());
     client.println();
@@ -450,7 +450,7 @@ void handleWWW(WiFiClient client) {           // default request serves STATUS p
 <html>\
   <head>\
     <meta http-equiv='refresh' content='60'/>\
-    <link rel='icon' href='favicon.ico' type='image/png' />\
+    <link rel=\"shortcut icon\" href=\"fav.ico\" type=\"image/x-icon\" />\
     <title>SolarGuardn</title>\
     <style>\
       body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
