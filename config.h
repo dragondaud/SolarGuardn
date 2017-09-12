@@ -1,6 +1,6 @@
 /* SolarGuardn config.h */
 
-#define VERSION     "0.7.01"
+#define VERSION     "0.7.02"
 #define DEBUG
 #define USERCONFIG  "/temp/userconfig.h"  // include user config from outside project directory
 
@@ -11,11 +11,10 @@
 #include <ArduinoOTA.h>         // provides each the above libraries
 #include <time.h>
 #include <Math.h>
-#include "FS.h"
+#include <FS.h>
+#include <pgmspace.h>
 
-WiFiServer server(80);
-
-/** user config **/
+/** BEGIN USER CONFIG **/
 #ifdef USERCONFIG
 #include USERCONFIG
 #else
@@ -30,11 +29,14 @@ String offURL = "http://sonoff.fqdn/cm?cmnd=Power%20off";
 #endif
 
 int TZ = -6;
-int Air = 400;                    // value in air
-int Water = 800;                  // value in water
-int interval = (Water - Air) / 3; // split into dry, wet, soaked
-int numReads = 10;                // number of samples to average
-bool Fahrenheit = true;           // display Temp in Fahrenheit
+int Air = 400;                     // value in air
+int Water = 800;                   // value in water
+int interval = (Water - Air) / 3;  // split into dry, wet, soaked
+int numReads = 10;                 // number of samples to average
+bool Fahrenheit = true;            // display Temp in Fahrenheit
+/** END USER CONFIG **/
+
+#define CONFIG  "/config.txt"     // SPIFFS config file
 
 /* BME280 config **/
 #include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using library manager
@@ -57,6 +59,9 @@ AdafruitIO_Feed *IOrelay =    io.feed("relay");
 AdafruitIO_Feed *IOfeed07 =   io.feed("feed07");
 AdafruitIO_Feed *IOfeed08 =   io.feed("feed08");
 
+/** Web Server **/
+WiFiServer server(80);
+
 /** pin defs **/
 #define MOIST     A0    // analog input from soil moisture sensor
 #define MPOW      D2    // power output to sensors (Q1)
@@ -64,8 +69,6 @@ AdafruitIO_Feed *IOfeed08 =   io.feed("feed08");
 #define RELAY     D4    // Relay output (Q2)
 #define I2C_CLK   D5    // I2C clock (SCK)
 #define I2C_DAT   D6    // I2C data (SDI)
-
-#define CONFIG  "/config.txt"
 
 // initialize vars
 
@@ -78,4 +81,28 @@ int caliCount = 0;
 int deBounce = 0;
 
 volatile int buttonState = HIGH;
+
+// FLASH constants, to save on RAM
+
+static const PROGMEM char DOT[] = ".";
+static const PROGMEM char COMMA[] = ", ";
+
+static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\
+<html><head>\
+  <meta http-equiv='refresh' content='60'/>\
+  <link rel=\"shortcut icon\" href=\"fav.ico\" type=\"image/x-icon\" />\
+  <title>SolarGuardn</title>\
+  <style>\
+    body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
+  </style>\
+</head>\
+<body>\
+  <h1>SolarGuardn %s </h1>\
+  <p>Current time: %s </p>\
+  <p>Temperature: %u &deg;F</p>\
+  <p>Humidity: %u%% RH</p>\
+  <p>Abs Pressure: %s inHg</p>\
+  <p>Soil Moisture: %u </p>\
+</body>\
+</html>\r\n";
 
