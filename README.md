@@ -1,5 +1,5 @@
 # SolarGuardn
-## beta 0.7.01 09/10/2017
+## v0.7.05 PRE-RELEASE 04-Oct-2017
 ### by David Denney <dragondaud@gmail.com>
 
 Master repository: https://github.com/dragondaud/SolarGuardn
@@ -13,15 +13,22 @@ Master repository: https://github.com/dragondaud/SolarGuardn
 - WiFi client
 - WiFi web server
 - Web server status page
-- Pump control with SONOFF/Tasmota
+- Telnet server for remote debugging/monitoring
+- Pump control with SONOFF/Espurna
 - SPIFFS config file
 
-My code is released to public domain, while libraries retain their respective licenses.
+This code is offered "as is" with no warranty, expressed or implied, for any purpose,
+and is released to the public domain, while all libraries retain their respective licenses.
 
-Designed to run on an ESP-12E NodeMCU board, the SolarGuardn monitors soil conditions,
-ambient temperature, humidity and atmospheric pressure. It reports collected data,
-using MQTT, either directly to AdafruitIO or through a local MQTT broker. Webserver
-provides direct access to current data, as well as firmware updating.
+See config.h for configurable settings and all includes.
+
+Designed to run on an ESP-12E NodeMCU board with additional hardware,
+this sketch will monitor soil conditions, ambient temperature, humidity
+and atmospheric pressure, then report changes using MQTT, to AdafruitIO.
+
+A builtin WWW server provides direct access to current data, /reset request will reboot ESP.
+
+Telnet server allows remote monitoring and debugging when serial is not practical.
 
 Press FLASH button on NodeMCU to enter moisture sensor calibration mode, adjust input pot, monitor serial
 
@@ -29,6 +36,10 @@ Press FLASH button twice rapidly to store current running config to SPIFFS
 
 **Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP**
 
-Some of the code is based on examples from the ESP8266 core and other libraries.
+Some code is based on examples from the ESP8266, ArduinoOTA and other libraries.
 
-Install Arduino core for ESP8266 from: https://github.com/esp8266/Arduino
+Sketch requires ESP8266 library v2.4.0, docs at: https://arduino-esp8266.readthedocs.io/en/2.4.0-rc1/
+
+You can use the release candidate by adding  this to File->Preferences->Additional Board Manager URLs:
+
+https://github.com/esp8266/Arduino/releases/download/2.4.0-rc1/package_esp8266com_index.json
