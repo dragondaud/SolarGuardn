@@ -105,6 +105,7 @@ volatile int buttonState = HIGH;
 static const PROGMEM char NIL[] = "";
 static const PROGMEM char DOT[] = ".";
 static const PROGMEM char COMMA[] = ", ";
+static const PROGMEM char CRLF[] = "\r\n";
 
 #ifdef WWW
 static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\
@@ -119,6 +120,7 @@ static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/htm
 <body>\
   <h1>SolarGuardn %s </h1>\
   <p>%s</p>\
+  <p>uptime %s</p>\
   <p>Temperature: %u &deg;F</p>\
   <p>Humidity: %u%% RH</p>\
   <p>Abs Pressure: %s inHg</p>\

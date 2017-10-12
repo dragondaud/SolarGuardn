@@ -31,14 +31,14 @@
 #include "config.h"
 
 void setup() {
-  Serial.begin(115200);             // Initialize Serial at 115200bps, to match bootloader
-  // Serial.setDebugOutput(true);   // uncomment for extra library debugging
-  while (!Serial);                  // wait for Serial to become available
+  Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
+  // Serial.setDebugOutput(true);     // uncomment for extra library debugging
+  while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
   debugOutLN(VERSION);
 
-  /* mount flash filesystem for configuration file */
+  /* mount flash filesystem to read config file */
   if (SPIFFS.begin()) {   // initialize SPIFFS for config file
 #ifdef DEBUG
     debugOutLN(F("SPIFFS mounted."));
@@ -115,7 +115,6 @@ void setup() {
   // No authentication by default
   if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS.c_str());
   ArduinoOTA.onStart([]() {
-    IOdebug->save("OTA");
     debugOutLN(F("\r\nOTA Start"));
   } );
   ArduinoOTA.onEnd([]() {
@@ -162,15 +161,13 @@ void setup() {
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
 
 #ifdef DEBUG
-  debugOutLN("Moisture: " + String(Water) + " > Soaked > " + String(Water - interval) \
-             + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
   espStats();
   IOdebug->save("START");
   debugOut(F("Ready, at "));
   debugOutLN(ttime());
   debugOutLN(FPSTR(NIL));
 #endif
-  delay(1000);
+  delay(5000);
 }
 
 template <typename T> void debugOut(const T x) {
@@ -185,7 +182,7 @@ template <typename T> void debugOut(const T x) {
 
 template <typename T> void debugOutLN(const T x) {
   debugOut(x);
-  debugOut("\r\n");
+  debugOut(FPSTR(CRLF));
 }
 
 #ifdef TELNET
@@ -216,6 +213,16 @@ void handleTelnet(void) {
 }
 #endif
 
+String upTime() {
+  long t = millis() / 1000;
+  long s = t % 60;
+  long m = (t / 60) % 60;
+  long h = (t / (60 * 60)) % 24;
+  char ut[10];
+  snprintf(ut, sizeof(ut), "%d:%02d:%02d", h, m, s);
+  return String(ut);
+}
+
 void espStats() {
   debugOut(F("WiFi Hostname: "));
   debugOutLN(WiFi.hostname());
@@ -229,6 +236,10 @@ void espStats() {
   debugOutLN(ESP.getFreeSketchSpace());
   debugOut(F("ESP free RAM: "));
   debugOutLN(ESP.getFreeHeap());
+  debugOut(F("ESP uptime: "));
+  debugOutLN(upTime());
+  debugOutLN("Moisture: " + String(Water) + " > Soaked > " + String(Water - interval) \
+             + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
 }
 
 void readConfig(String input) {
@@ -341,32 +352,28 @@ void waterControl(String stat) {
 
 void calibrate() {
   int sensorValue = 0;
-  float voltage;
   debugOut(caliCount--);
-  sensorValue = readMoisture();
-  voltage = sensorValue * (3.3 / 1023.0);
-  debugOut(F(" ON:  "));
-  debugOut(sensorValue);
-  debugOut(FPSTR(COMMA));
-  debugOutLN(voltage);
-  sensorValue = analogRead(MOIST);
-  voltage = sensorValue * (3.3 / 1023.0);
-  debugOut(F("OFF: "));
-  debugOut(sensorValue);
-  debugOut(FPSTR(COMMA));
-  debugOutLN(voltage);
+  debugOut(F(") "));
+  sensorValue = readMoisture(true);
 }
 
-int readMoisture() {           // analog input smoothing
-  int s = 0;
-  digitalWrite(MPOW, HIGH);     // turn on moisture sensor
+int readMoisture(bool VERBOSE) {      // analog input smoothing
+  int r = 0, s = 0;
+  digitalWrite(MPOW, HIGH);           // turn on moisture sensor
+  delay(150);                         // overcome soil capacitance
+  analogRead(MOIST);                  // throw away first value
   for (int i = 0; i < numReads; i++) {
     delay(10);
-    s += analogRead(MOIST);     // read analog value from moisture sensor
+    r = analogRead(MOIST);            // read analog value from moisture sensor
+    if (VERBOSE) {                    // during calibration, output all values
+      debugOut(r);
+      debugOut(FPSTR(COMMA));
+    }
+    s += r;
   }
-  digitalWrite(MPOW, LOW);      // turn off moisture sensor
-  float a = s / numReads;
-  return round(a);
+  digitalWrite(MPOW, LOW);            // turn off moisture sensor
+  if (VERBOSE) debugOutLN(F("\b\b "));
+  return round((float)s / (float)numReads);
 }
 
 void readBME() {
@@ -377,13 +384,10 @@ void readBME() {
 }                                                 /*-- add configure option for hPa or inHg --*/
 
 void doMe() {                             // called every 5 seconds to handle background tasks
-  yield();
 #ifdef OTA
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
-  yield();
 #endif
   io.run();                               // and handle AdafruitIO messages
-  yield();
 #ifdef WWW
   WiFiClient client = server.available(); // and serve web requests
   if (client) handleWWW(client);
@@ -391,6 +395,7 @@ void doMe() {                             // called every 5 seconds to handle ba
 #ifdef TELNET
   handleTelnet();
 #endif
+  yield();
   if (caliCount >= 24 ) {                  // double press flash to save config
     for (int i = 0; i < 10; i++) {
       digitalWrite(LED_BUILTIN, LOW);    // flash LED so we know it worked
@@ -401,14 +406,14 @@ void doMe() {                             // called every 5 seconds to handle ba
     writeConfig();
     caliCount = 0;
   }
-  yield();
-  if (caliCount > 0) calibrate();
+  else if (caliCount > 0) calibrate();
 }
 
 void loop() {                       /** MAIN LOOP **/
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
   doMe();                           // non-sensor loop stuff
   readBME();
+  soil = readMoisture(false);
 #ifdef DEBUG
   debugOut(String(temp, 2));
   if (Fahrenheit) debugOut(F("°F, "));
@@ -417,9 +422,6 @@ void loop() {                       /** MAIN LOOP **/
   debugOut(F("% RH, "));
   debugOut(String(pressure / 100.0F, 2));
   debugOut(F(" inHg, "));
-#endif
-  soil = readMoisture();
-#ifdef DEBUG
   debugOut(soil);
 #endif
   if (soil > (Water - interval)) waterControl("Soaked");
@@ -430,7 +432,7 @@ void loop() {                       /** MAIN LOOP **/
 #ifdef DEBUG
     debugOutLN("save moisture " + String(soil));
 #endif
-    //IOmoist->save(soil);                  // store soil resistance
+    IOmoist->save(soil);                  // store soil resistance
     soil_l = soil;
   }
 
@@ -469,13 +471,13 @@ void loop() {                       /** MAIN LOOP **/
   digitalWrite(LED_BUILTIN, HIGH);        // turn off LED before sleep loop
 
   for (int x = 0; x < 12; x++) {          // sleeping loop between moisture readings to save power
+    doMe();
 #ifdef DEBUG
     debugOut(ttime());
     debugOut(F(" ("));
     debugOut(ESP.getFreeHeap());
     debugOut(F(" free) \r"));            // Arduino serial monitor does not support CR, use PuTTY
 #endif
-    doMe();
     delay(5000);                          // delay() allows background tasks to run each invocation
   }
 }
@@ -483,8 +485,8 @@ void loop() {                       /** MAIN LOOP **/
 String ttime() {
   time_t now = time(nullptr);
   String t = ctime(&now);
-  t.trim();
-  return t;                             // formated time contains crlf
+  t.trim();                               // formated time contains crlf
+  return t;
 }
 
 #ifdef WWW
@@ -493,7 +495,7 @@ void handleWWW(WiFiClient client) {                        // default request se
   char buf[1000];
   char p[10];
   String req = client.readStringUntil('\r');
-  String tim = ttime();
+  String tim = ttime(), upt = upTime();
 #ifdef DEBUG
   debugOutLN(FPSTR(NIL));
   debugOut(req);
@@ -521,6 +523,16 @@ void handleWWW(WiFiClient client) {                        // default request se
     f.close();
     return;
   }
+  else if (req.startsWith("GET /CAL")) {                  // CALIBRATE will start moisture sensor calibration
+    client.println(F("HTTP/1.1 204 No Content"));
+    client.println();
+    client.flush();
+    client.stop();
+    debugOut(F(" at "));
+    debugOutLN(tim);
+    caliCount += 12;
+    return;
+  }
   else if (req.startsWith("GET /RESET")) {                // RESET will restart ESP
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
@@ -532,7 +544,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     ESP.restart();
   }
   dtostrf(pressure / 100.0F, 5, 2, p);
-  snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), temp_l, humid_l, p, soil);
+  snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.print(buf);
 #ifdef DEBUG
   debugOutLN(" send status (" + String(strlen(buf)) + " bytes) at " + tim);
