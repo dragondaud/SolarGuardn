@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.05 PRE-RELEASE 04-Oct-2017
+  SolarGuardn v0.7.06 PRE-RELEASE 17-Oct-2017
   by David Denney
 
   This code is offered "as is" with no warranty, expressed or implied, for any purpose,
@@ -13,7 +13,7 @@
   this sketch will monitor soil conditions, ambient temperature, humidity
   and atmospheric pressure, then report changes using MQTT, to AdafruitIO.
 
-  A builtin WWW server provides direct access to current data, /reset request will reboot ESP.
+  A builtin WWW server provides direct access to current data, /reset will reboot, /calibrate starts calibration.
   Telnet server allows remote monitoring and debugging when serial is not practical.
 
   Press FLASH button on NodeMCU to enter moisture sensor calibration mode, adjust input pot, monitor serial
@@ -89,7 +89,7 @@ void setup() {
 #endif
   telnetServer.begin();
   //telnetServer.setNoDelay(true); // ESP bug
-#endif
+#endif // TELNET
 
   /* configTime sntp */
   configTime((TZ * 3600), 0, "pool.ntp.org", "time.nist.gov");
@@ -107,12 +107,8 @@ void setup() {
 #endif
 
 #ifdef OTA
-  /* ArduinoOTA config */
-  // Hostname defaults to esp8266-[ChipID]
   ArduinoOTA.setHostname(host.c_str());
-  // Port defaults to 8266
   ArduinoOTA.setPort(OTA_PORT);
-  // No authentication by default
   if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS.c_str());
   ArduinoOTA.onStart([]() {
     debugOutLN(F("\r\nOTA Start"));
@@ -137,15 +133,14 @@ void setup() {
 #ifdef DEBUG
   debugOutLN(F("OTA handler started"));
 #endif
-  /* end ArduinoOTA */
-#endif
+#endif // OTA
 
 #ifdef WWW
   server.begin(); /* start web server */
 #ifdef DEBUG
   debugOutLN(F("WWW server started"));
 #endif
-#endif
+#endif // WWW
 
   Wire.begin(I2C_DAT, I2C_CLK);
   Wire.setClock(100000);
@@ -162,28 +157,30 @@ void setup() {
 
 #ifdef DEBUG
   espStats();
-  IOdebug->save("START");
+  IOdebug->save(ESP.getResetReason());
   debugOut(F("Ready, at "));
   debugOutLN(ttime());
   debugOutLN(FPSTR(NIL));
 #endif
+  sonoff("OFF");
   delay(5000);
-}
+} // setup()
 
 template <typename T> void debugOut(const T x) {
   Serial.print(x);
 #ifdef TELNET
   if (telnetClient && telnetClient.connected()) {
     telnetClient.print(x);
-    delay(1);
+    telnetClient.flush();
+    yield();
   }
 #endif
-}
+} // debugOut()
 
 template <typename T> void debugOutLN(const T x) {
   debugOut(x);
   debugOut(FPSTR(CRLF));
-}
+} // debugOutLN()
 
 #ifdef TELNET
 void handleTelnet(void) {
@@ -210,8 +207,8 @@ void handleTelnet(void) {
 #endif
     }
   }
-}
-#endif
+} // handleTelnet()
+#endif // TELNET
 
 String upTime() {
   long t = millis() / 1000;
@@ -221,7 +218,7 @@ String upTime() {
   char ut[10];
   snprintf(ut, sizeof(ut), "%d:%02d:%02d", h, m, s);
   return String(ut);
-}
+} // upTime()
 
 void espStats() {
   debugOut(F("WiFi Hostname: "));
@@ -230,6 +227,8 @@ void espStats() {
   debugOutLN(WiFi.localIP());
   debugOut(F("WiFi MAC addr: "));
   debugOutLN(WiFi.macAddress());
+  debugOut(F("WiFi Strength: "));
+  debugOutLN(WiFi.RSSI());
   debugOut(F("ESP sketch size: "));
   debugOutLN(ESP.getSketchSize());
   debugOut(F("ESP free flash: "));
@@ -238,9 +237,11 @@ void espStats() {
   debugOutLN(ESP.getFreeHeap());
   debugOut(F("ESP uptime: "));
   debugOutLN(upTime());
-  debugOutLN("Moisture: " + String(Water) + " > Soaked > " + String(Water - interval) \
+  debugOut(F("ESP last reset: "));
+  debugOutLN(ESP.getResetReason());
+  debugOutLN("Moisture range: " + String(Water) + " > Soaked > " + String(Water - interval) \
              + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
-}
+} // espStats()
 
 void readConfig(String input) {
   int e = input.indexOf("=") + 1;
@@ -259,7 +260,7 @@ void readConfig(String input) {
   else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
   else if (input.startsWith("onURL")) onURL = input.substring(e);
   else if (input.startsWith("offURL")) offURL = input.substring(e);
-}
+} // readConfig()
 
 void writeConfig() {
   File f = SPIFFS.open(CONFIG, "w");
@@ -285,7 +286,7 @@ void writeConfig() {
   f.printf("offURL=%s\n", offURL.c_str());
   f.close();
   debugOutLN(F("Success!"));
-}
+} // writeConfig()
 
 void handleButton() {
   if (millis() - deBounce < 50) return;   // debounce button
@@ -295,7 +296,7 @@ void handleButton() {
     caliCount += 12;                      // each button release, calibrate +12 loops (1 min)
     deBounce = millis();                  // and debounce
   }
-}
+} // handleButton()
 
 void sonoff(String cmd) {         // control Sonoff module running ESPurna
   HTTPClient http;
@@ -348,33 +349,38 @@ void waterControl(String stat) {
 #endif
     }
   }
-}
+} // waterControl()
 
 void calibrate() {
-  int sensorValue = 0;
   debugOut(caliCount--);
   debugOut(F(") "));
-  sensorValue = readMoisture(true);
-}
+  readMoisture(true);
+} // calibrate()
 
 int readMoisture(bool VERBOSE) {      // analog input smoothing
-  int r = 0, s = 0;
-  digitalWrite(MPOW, HIGH);           // turn on moisture sensor
-  delay(150);                         // overcome soil capacitance
-  analogRead(MOIST);                  // throw away first value
+  int s = 0;
+  digitalWrite(MPOW, HIGH);           // power to moisture sensor
   for (int i = 0; i < numReads; i++) {
-    delay(10);
-    r = analogRead(MOIST);            // read analog value from moisture sensor
+    int r = 0, x = 0;
+    do {
+      delay(100);
+      r = 1023 - analogRead(MOIST);   // read analog value from moisture sensor (invert for capacitance sensor)
+      x++;
+    } while (r < Air && x < 10);
+    s += r;
     if (VERBOSE) {                    // during calibration, output all values
       debugOut(r);
       debugOut(FPSTR(COMMA));
     }
-    s += r;
   }
   digitalWrite(MPOW, LOW);            // turn off moisture sensor
-  if (VERBOSE) debugOutLN(F("\b\b "));
-  return round((float)s / (float)numReads);
-}
+  int r = round((float)s / (float)numReads);
+  if (VERBOSE) {
+    debugOut(F("\b\b = "));
+    debugOutLN(r);
+  }
+  return r;
+} // readMoisture()
 
 void readBME() {
   temp = bme.readTemperature();                   // read Temp in C
@@ -407,7 +413,7 @@ void doMe() {                             // called every 5 seconds to handle ba
     caliCount = 0;
   }
   else if (caliCount > 0) calibrate();
-}
+} // doMe()
 
 void loop() {                       /** MAIN LOOP **/
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
@@ -432,12 +438,12 @@ void loop() {                       /** MAIN LOOP **/
 #ifdef DEBUG
     debugOutLN("save moisture " + String(soil));
 #endif
-    IOmoist->save(soil);                  // store soil resistance
+    IOmoist->save(soil);                  // store soil moisture
     soil_l = soil;
   }
 
-  int tt = round(temp);                    // round off temperature
-  if (tt != temp_l && tt < 120) {           // if temp has changed and is valid then
+  int tt = round(temp);                   // round off temperature
+  if (tt != temp_l && tt < 120) {         // if temp has changed and is valid then
 #ifdef DEBUG
     debugOut("save temperature " + String(tt));
     if (Fahrenheit) debugOutLN(F("°F"));
@@ -480,7 +486,7 @@ void loop() {                       /** MAIN LOOP **/
 #endif
     delay(5000);                          // delay() allows background tasks to run each invocation
   }
-}
+} // loop()
 
 String ttime() {
   time_t now = time(nullptr);
@@ -519,6 +525,8 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(f.size());
     client.println();
     client.write(f);  // ESP8266 Arduino 2.4.0 library automatically buffers file by just passing handle
+    client.flush();
+    yield();
     client.stop();
     f.close();
     return;
@@ -527,6 +535,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
+    yield();
     client.stop();
     debugOut(F(" at "));
     debugOutLN(tim);
@@ -537,19 +546,21 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
+    yield();
     client.stop();
     debugOut(F(" restart ESP at "));
     debugOutLN(tim);
-    delay(500);                                           // requires some delay to close connection before reset
+    delay(500);                                           // delay to close connection before reset
     ESP.restart();
   }
   dtostrf(pressure / 100.0F, 5, 2, p);
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.print(buf);
+  client.flush();
 #ifdef DEBUG
   debugOutLN(" send status (" + String(strlen(buf)) + " bytes) at " + tim);
 #endif
   yield();
   client.stop();
-}
-#endif
+} // handleWWW()
+#endif // WWW

@@ -40,8 +40,8 @@ String offURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0";
 #endif
 
 int TZ = -6;
-int Air = 400;                     // sensor value, in air
-int Water = 800;                   // sensor value, in water
+int Air = 223;                     // sensor value, in air
+int Water = 623;                   // sensor value, in water
 int interval = (Water - Air) / 3;  // split into dry, wet, soaked
 int numReads = 10;                 // number of samples to average
 bool Fahrenheit = true;            // display Temp in Fahrenheit
