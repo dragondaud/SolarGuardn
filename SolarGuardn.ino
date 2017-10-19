@@ -32,7 +32,7 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  // Serial.setDebugOutput(true);     // uncomment for extra library debugging
+  Serial.setDebugOutput(true);      // uncomment for extra library debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
@@ -61,7 +61,7 @@ void setup() {
   debugOutLN(F("telnet server started"));
 #endif
   telnetServer.begin();
-  //telnetServer.setNoDelay(true); // ESP bug
+  telnetServer.setNoDelay(false); // drops chars if set true
 #endif // TELNET
 
   /* configTime sntp */
@@ -84,22 +84,22 @@ void setup() {
   ArduinoOTA.setPort(OTA_PORT);
   if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS);
   ArduinoOTA.onStart([]() {
-    debugOutLN(F("\r\nOTA Start"));
+    Serial.println(F("\r\nOTA Start"));
   } );
   ArduinoOTA.onEnd([]() {
-    debugOutLN(F("\r\nOTA End"));
+    Serial.println(F("\r\nOTA End"));
   } );
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    debugOut("OTA Progress: " + String((progress / (total / 100))) + " \r");
+    Serial.print("OTA Progress: " + String((progress / (total / 100))) + " \r");
   });
   ArduinoOTA.onError([](ota_error_t error) {
     debugOut("Error[" + String(error) + "]: ");
-    if (error == OTA_AUTH_ERROR) debugOutLN(F("Auth Failed"));
-    else if (error == OTA_BEGIN_ERROR) debugOutLN(F("Begin Failed"));
-    else if (error == OTA_CONNECT_ERROR) debugOutLN(F("Connect Failed"));
-    else if (error == OTA_RECEIVE_ERROR) debugOutLN(F("Receive Failed"));
-    else if (error == OTA_END_ERROR) debugOutLN(F("End Failed"));
-    else debugOutLN(F("unknown error"));
+    if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
+    else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
+    else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
+    else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
+    else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
+    else Serial.println(F("unknown error"));
     ESP.restart();
   });
   ArduinoOTA.begin();
@@ -109,7 +109,7 @@ void setup() {
 #endif // OTA
 
 #ifdef WWW
-  server.begin(); /* start web server */
+  wwwServer.begin(); /* start web server */
 #ifdef DEBUG
   debugOutLN(F("WWW server started"));
 #endif
@@ -129,6 +129,7 @@ void setup() {
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
 
 #ifdef DEBUG
+  SaveCrash.print();
   espStats();
   IOdebug->save(ESP.getResetReason());
   debugOut(F("Ready, at "));
@@ -141,13 +142,14 @@ void setup() {
 
 template <typename T> void debugOut(const T x) {
   Serial.print(x);
+  Serial.flush();
 #ifdef TELNET
   if (telnetClient && telnetClient.connected()) {
     telnetClient.print(x);
     telnetClient.flush();
-    yield();
   }
 #endif
+  yield();
 } // debugOut()
 
 template <typename T> void debugOutLN(const T x) {
@@ -174,7 +176,6 @@ void handleTelnet(void) {
       SaveCrash.print(telnetClient);
       SaveCrash.clear();
       espStats();
-      telnetClient.flush();
 #endif
     } else {
       telnetServer.available().stop();
@@ -197,7 +198,7 @@ String upTime() {
 } // upTime()
 
 void espStats() {
-  debugOut(F("WiFi Hostname: "));
+  debugOut(F("\r\nWiFi Hostname: "));
   debugOutLN(WiFi.hostname());
   debugOut(F("WiFi IP addr: "));
   debugOutLN(WiFi.localIP());
@@ -220,11 +221,11 @@ void espStats() {
 } // espStats()
 
 /*
-void readConfig() {       // mount flash filesystem to read SPIFFS config file
+  void readConfig() {       // mount flash filesystem to read SPIFFS config file
   if (SPIFFS.begin()) {
-#ifdef DEBUG
+  #ifdef DEBUG
     debugOutLN(F("SPIFFS mounted."));
-#endif
+  #endif
   }
   else {
     debugOutLN(F("Could not mount file system!"));
@@ -233,11 +234,11 @@ void readConfig() {       // mount flash filesystem to read SPIFFS config file
   if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
   else {
     File f = SPIFFS.open(CONFIG, "r");
-#ifdef DEBUG
+  #ifdef DEBUG
     debugOut(F("config.txt: "));
     debugOut(f.size());
     debugOutLN(F(" bytes"));
-#endif
+  #endif
     while (f.available()) {
       String t = f.readStringUntil('\n');
       t.trim();
@@ -246,9 +247,9 @@ void readConfig() {       // mount flash filesystem to read SPIFFS config file
     }
     f.close();
   }
-} // readConfig()
+  } // readConfig()
 
-void getConfig(String input) {
+  void getConfig(String input) {
   int e = input.indexOf("=") + 1;
   if ((e == 1) || (e >= input.length())) return;
   if (input.startsWith(F("host"))) host = input.substring(e);
@@ -258,16 +259,16 @@ void getConfig(String input) {
   else if (input.startsWith("Fahrenheit")) Fahrenheit = input.substring(e).toInt();
   else if (input.startsWith("WIFI_SSID")) WIFI_SSID = input.substring(e);
   else if (input.startsWith("WIFI_PASS")) WIFI_PASS = input.substring(e);
-#ifdef OTA
+  #ifdef OTA
   else if (input.startsWith("OTA_PASS")) OTA_PASS = input.substring(e);
-#endif
+  #endif
   else if (input.startsWith("IO_USERNAME")) IO_USERNAME = input.substring(e);
   else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
   else if (input.startsWith("onURL")) onURL = input.substring(e);
   else if (input.startsWith("offURL")) offURL = input.substring(e);
-} // getConfig()
+  } // getConfig()
 
-void writeConfig() {
+  void writeConfig() {
   File f = SPIFFS.open(CONFIG, "w");
   int c = 0;
   if (!f) {
@@ -282,16 +283,16 @@ void writeConfig() {
   f.printf("Fahrenheit=%u\n", Fahrenheit);
   f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
   f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
-#ifdef OTA
+  #ifdef OTA
   f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
-#endif
+  #endif
   f.printf("IO_USERNAME=%s\n", IO_USERNAME.c_str());
   f.printf("IO_KEY=%s\n", IO_KEY.c_str());
   f.printf("onURL=%s\n", onURL.c_str());
   f.printf("offURL=%s\n", offURL.c_str());
   f.close();
   debugOutLN(F("Success!"));
-} // writeConfig()
+  } // writeConfig()
 */
 
 void handleButton() {
@@ -365,7 +366,7 @@ void calibrate() {
 
 int readMoisture(bool VERBOSE) {      // analog input smoothing
   int s = 0;
-  for (int i = 0; i < numReads; i++) {
+  for (int i = 0; i < nREAD; i++) {
     int r = 0, x = 0;
     do {
       digitalWrite(MPOW, HIGH);       // power to moisture sensor
@@ -381,7 +382,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       debugOut(FPSTR(COMMA));
     }
   }
-  int r = round((float)s / (float)numReads);
+  int r = round((float)s / (float)nREAD);
   if (VERBOSE) {
     debugOut(F("\b\b = "));
     debugOutLN(r);
@@ -397,29 +398,29 @@ void readBME() {
 }                                                 /*-- add configure option for hPa or inHg --*/
 
 void doMe() {                             // called every 5 seconds to handle background tasks
+  yield();                                // process background tasks
 #ifdef OTA
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
 #endif
-  io.run();                               // and handle AdafruitIO messages
+  io.run();                               // handle AdafruitIO messages
 #ifdef WWW
-  WiFiClient client = server.available(); // and serve web requests
+  WiFiClient client = wwwServer.available(); // serve web requests
   if (client) handleWWW(client);
 #endif
 #ifdef TELNET
-  handleTelnet();
+  handleTelnet();                          // handle telnet server
 #endif
-  yield();
-  if (caliCount >= 24 ) {                  // double press flash to save config
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(LED_BUILTIN, LOW);    // flash LED so we know it worked
-      delay(20);
-      digitalWrite(LED_BUILTIN, HIGH);
-      delay(20);
+  /*  if (caliCount >= 24 ) {                  // double press flash to save config
+      for (int i = 0; i < 10; i++) {
+        digitalWrite(LED_BUILTIN, LOW);    // flash LED so we know it worked
+        delay(20);
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(20);
+      }
+      writeConfig();
+      caliCount = 0;
     }
-    //writeConfig();
-    caliCount = 0;
-  }
-  else if (caliCount > 0) calibrate();
+    else*/  if (caliCount > 0) calibrate();
 } // doMe()
 
 void loop() {                       /** MAIN LOOP **/
@@ -516,7 +517,6 @@ void handleWWW(WiFiClient client) {                        // default request se
   debugOut(client.remoteIP());
   IOdebug->save("WWW " + client.remoteIP().toString());
 #endif
-  yield();
   client.flush();
   req.toUpperCase();
   if (req.startsWith("GET /FAV")) {                       // send favicon.ico from data directory
@@ -533,7 +533,6 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println();
     client.write(f);  // ESP8266 Arduino 2.4.0 library automatically buffers file by just passing handle
     client.flush();
-    yield();
     client.stop();
     f.close();
     return;
@@ -542,7 +541,6 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
-    yield();
     client.stop();
     debugOut(F(" at "));
     debugOutLN(tim);
@@ -553,7 +551,6 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
-    yield();
     client.stop();
     debugOut(F(" restart ESP at "));
     debugOutLN(tim);
@@ -564,7 +561,6 @@ void handleWWW(WiFiClient client) {                        // default request se
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.print(buf);
   client.flush();
-  yield();
   client.stop();
 #ifdef DEBUG
   debugOutLN(" send status (" + String(strlen(buf)) + " bytes) at " + tim);

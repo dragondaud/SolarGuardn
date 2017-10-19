@@ -1,6 +1,6 @@
 /* SolarGuardn config.h */
 
-#define VERSION     "0.7.05"
+#define VERSION     "0.7.06"
 
 #define USERCONFIG    // include local user config, ignored by git
 
@@ -11,7 +11,8 @@
 #define TELNET
 #define TELNET_PORT 23
 #define WWW           // enable WWW server status page
-#define STIME 15      // time delay between sampling analog input in milliseconds
+#define STIME 120     // time delay between sampling analog input in milliseconds
+#define nREAD 3       // number of samples to average
 
 /* includes */
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
@@ -27,6 +28,8 @@
 #include <FS.h>
 #include <pgmspace.h>           // for flash constants to save ram
 
+#define SAVE_CRASH_SPACE_SIZE   0x07FF  // space reserved to store crash data
+
 /** BEGIN USER CONFIG **/
 #ifdef USERCONFIG
 #include "userconfig.h"
@@ -41,11 +44,10 @@
 #define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
 #endif
 
-int TZ = -6;
+int TZ = -6;                       // time zone offset
 int Air = 223;                     // sensor value, in air
 int Water = 623;                   // sensor value, in water
 int interval = (Water - Air) / 3;  // split into dry, wet, soaked
-int numReads = 10;                 // number of samples to average
 bool Fahrenheit = true;            // display Temp in Fahrenheit
 /** END USER CONFIG **/
 
@@ -74,7 +76,7 @@ AdafruitIO_Feed *IOfeed =     io.feed("feed");        // unused
 
 #ifdef WWW
 /** Web Server **/
-WiFiServer server(80);
+WiFiServer wwwServer(80);
 #endif
 
 /** serial or telnet output **/
