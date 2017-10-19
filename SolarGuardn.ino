@@ -32,7 +32,7 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  Serial.setDebugOutput(true);      // uncomment for extra library debugging
+  Serial.setDebugOutput(true);        // uncomment for extra library debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
@@ -115,12 +115,10 @@ void setup() {
 #endif
 #endif // WWW
 
-  Wire.begin(I2C_DAT, I2C_CLK);
+  Wire.begin(I2C_DAT, I2C_CLK); /** start I2C for BME280 weather sensor **/
   Wire.setClock(100000);
-  if (!bme.begin(BMEid)) {
-    debugOutLN(F("Could not find a valid BME280 sensor, check wiring!"));
-    ESP.restart();
-  }
+  BME = bme.begin(BMEid);
+  if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
 
   pinMode(LED_BUILTIN, OUTPUT);                   // enable onboard LED output
   pinMode(MPOW, OUTPUT);                          // moisture sensor power
@@ -142,7 +140,6 @@ void setup() {
 
 template <typename T> void debugOut(const T x) {
   Serial.print(x);
-  Serial.flush();
 #ifdef TELNET
   if (telnetClient && telnetClient.connected()) {
     telnetClient.print(x);
@@ -150,11 +147,12 @@ template <typename T> void debugOut(const T x) {
   }
 #endif
   yield();
+  Serial.flush();
 } // debugOut()
 
 template <typename T> void debugOutLN(const T x) {
   debugOut(x);
-  debugOut(FPSTR(CRLF));
+  debugOut(FPSTR(EOL));
 } // debugOutLN()
 
 #ifdef TELNET
@@ -391,6 +389,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
 } // readMoisture()
 
 void readBME() {
+  if (!BME) return;
   temp = bme.readTemperature();                   // read Temp in C
   if (Fahrenheit) temp = temp * 1.8F + 32.0F;     // convert to Fahrenheit
   humid = bme.readHumidity();                     // read Humidity
@@ -490,7 +489,7 @@ void loop() {                       /** MAIN LOOP **/
     debugOut(ttime());
     debugOut(F(" ("));
     debugOut(ESP.getFreeHeap());
-    debugOut(F(" free) \r"));            // Arduino serial monitor does not support CR, use PuTTY
+    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
 #endif
     delay(5000);                          // delay() allows background tasks to run each invocation
   }
@@ -510,6 +509,7 @@ void handleWWW(WiFiClient client) {                        // default request se
   char p[10];
   String req = client.readStringUntil('\r');
   String tim = ttime(), upt = upTime();
+  client.flush();
 #ifdef DEBUG
   debugOutLN(FPSTR(NIL));
   debugOut(req);
@@ -517,7 +517,6 @@ void handleWWW(WiFiClient client) {                        // default request se
   debugOut(client.remoteIP());
   IOdebug->save("WWW " + client.remoteIP().toString());
 #endif
-  client.flush();
   req.toUpperCase();
   if (req.startsWith("GET /FAV")) {                       // send favicon.ico from data directory
     File f = SPIFFS.open("/favicon.ico", "r");
@@ -538,12 +537,14 @@ void handleWWW(WiFiClient client) {                        // default request se
     return;
   }
   else if (req.startsWith("GET /CAL")) {                  // CALIBRATE will start moisture sensor calibration
+#ifdef DEBUG
+    debugOut(F(" start calibration at "));
+    debugOutLN(tim);
+#endif
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
     client.stop();
-    debugOut(F(" at "));
-    debugOutLN(tim);
     caliCount += 12;
     return;
   }

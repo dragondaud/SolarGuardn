@@ -11,7 +11,7 @@
 #define TELNET
 #define TELNET_PORT 23
 #define WWW           // enable WWW server status page
-#define STIME 120     // time delay between sampling analog input in milliseconds
+#define STIME 200     // time delay between sampling analog input in milliseconds
 #define nREAD 3       // number of samples to average
 
 /* includes */
@@ -45,8 +45,8 @@
 #endif
 
 int TZ = -6;                       // time zone offset
-int Air = 223;                     // sensor value, in air
-int Water = 623;                   // sensor value, in water
+int Air = 220;                     // sensor value, in air
+int Water = 640;                   // sensor value, in water
 int interval = (Water - Air) / 3;  // split into dry, wet, soaked
 bool Fahrenheit = true;            // display Temp in Fahrenheit
 /** END USER CONFIG **/
@@ -59,6 +59,7 @@ bool Fahrenheit = true;            // display Temp in Fahrenheit
 #include <Wire.h>
 #define BMEid 0x76                // BME280 I2C id, default 0x77, alt is 0x76
 Adafruit_BME280 bme; // I2C
+bool BME = false;                  // is BME sensor present
 
 /** Adafruit IO Config **/
 #include "AdafruitIO_WiFi.h"        // install AdafruitIO and Adafruit_MQTT using Library manager
@@ -92,7 +93,7 @@ WiFiClient  telnetClient;
 #define I2C_CLK   D5    // I2C clock (SCK)
 #define I2C_DAT   D6    // I2C data (SDI)
 
-// initialize vars
+/** initialize vars **/
 
 int soil = 0, soil_l = 0;
 float temp = 0, humid = 0;
@@ -104,12 +105,12 @@ int deBounce = 0;
 
 volatile int buttonState = HIGH;
 
-// FLASH constants, to save on RAM
+/** FLASH constants, to save on RAM **/
 
 static const PROGMEM char NIL[] = "";
 static const PROGMEM char DOT[] = ".";
 static const PROGMEM char COMMA[] = ", ";
-static const PROGMEM char CRLF[] = "\r\n";
+static const PROGMEM char EOL[] = "\033[K\r\n";
 
 #ifdef WWW
 static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\
