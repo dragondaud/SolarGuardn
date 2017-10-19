@@ -38,39 +38,12 @@ void setup() {
   debugOut(F("SolarGuardn v"));
   debugOutLN(VERSION);
 
-  /* mount flash filesystem to read config file */
-  if (SPIFFS.begin()) {   // initialize SPIFFS for config file
-#ifdef DEBUG
-    debugOutLN(F("SPIFFS mounted."));
-#endif
-  }
-  else {
-    debugOutLN(F("Could not mount file system!"));
-    ESP.restart();
-  }
-  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
-  else {
-    File f = SPIFFS.open(CONFIG, "r");
-#ifdef DEBUG
-    debugOut(F("config.txt: "));
-    debugOut(f.size());
-    debugOutLN(F(" bytes"));
-#endif
-    while (f.available()) {
-      String t = f.readStringUntil('\n');
-      t.trim();
-      t.replace("\"", "");
-      readConfig(t);
-    }
-    f.close();
-  }
-
   /* AdafruitIO */
 #ifdef DEBUG
   debugOut(F("Connecting to Adafruit IO"));
 #endif
   /* add runtime config of AdafruitIO_WiFi io(IO_USERNAME.c_str(), IO_KEY.c_str(), WIFI_SSID.c_str(), WIFI_PASS.c_str()); */
-  WiFi.hostname(host.c_str());
+  WiFi.hostname(HOST);
   io.connect();
   while (io.status() < AIO_CONNECTED) {
 #ifdef DEBUG
@@ -107,9 +80,9 @@ void setup() {
 #endif
 
 #ifdef OTA
-  ArduinoOTA.setHostname(host.c_str());
+  ArduinoOTA.setHostname(HOST);
   ArduinoOTA.setPort(OTA_PORT);
-  if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS.c_str());
+  if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS);
   ArduinoOTA.onStart([]() {
     debugOutLN(F("\r\nOTA Start"));
   } );
@@ -198,7 +171,10 @@ void handleTelnet(void) {
       debugOut(F("\r\ntelnet connected from "));
       debugOutLN(telnetClient.remoteIP());
       IOdebug->save("telnet " + telnetClient.remoteIP().toString());
+      SaveCrash.print(telnetClient);
+      SaveCrash.clear();
       espStats();
+      telnetClient.flush();
 #endif
     } else {
       telnetServer.available().stop();
@@ -243,7 +219,36 @@ void espStats() {
              + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
 } // espStats()
 
-void readConfig(String input) {
+/*
+void readConfig() {       // mount flash filesystem to read SPIFFS config file
+  if (SPIFFS.begin()) {
+#ifdef DEBUG
+    debugOutLN(F("SPIFFS mounted."));
+#endif
+  }
+  else {
+    debugOutLN(F("Could not mount file system!"));
+    ESP.restart();
+  }
+  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
+  else {
+    File f = SPIFFS.open(CONFIG, "r");
+#ifdef DEBUG
+    debugOut(F("config.txt: "));
+    debugOut(f.size());
+    debugOutLN(F(" bytes"));
+#endif
+    while (f.available()) {
+      String t = f.readStringUntil('\n');
+      t.trim();
+      t.replace("\"", "");
+      readConfig(t);
+    }
+    f.close();
+  }
+} // readConfig()
+
+void getConfig(String input) {
   int e = input.indexOf("=") + 1;
   if ((e == 1) || (e >= input.length())) return;
   if (input.startsWith(F("host"))) host = input.substring(e);
@@ -260,7 +265,7 @@ void readConfig(String input) {
   else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
   else if (input.startsWith("onURL")) onURL = input.substring(e);
   else if (input.startsWith("offURL")) offURL = input.substring(e);
-} // readConfig()
+} // getConfig()
 
 void writeConfig() {
   File f = SPIFFS.open(CONFIG, "w");
@@ -287,6 +292,7 @@ void writeConfig() {
   f.close();
   debugOutLN(F("Success!"));
 } // writeConfig()
+*/
 
 void handleButton() {
   if (millis() - deBounce < 50) return;   // debounce button
@@ -359,12 +365,14 @@ void calibrate() {
 
 int readMoisture(bool VERBOSE) {      // analog input smoothing
   int s = 0;
-  digitalWrite(MPOW, HIGH);           // power to moisture sensor
   for (int i = 0; i < numReads; i++) {
     int r = 0, x = 0;
     do {
-      delay(100);
+      digitalWrite(MPOW, HIGH);       // power to moisture sensor
+      delay(STIME);
       r = 1023 - analogRead(MOIST);   // read analog value from moisture sensor (invert for capacitance sensor)
+      digitalWrite(MPOW, LOW);        // turn off moisture sensor
+      delay(STIME);
       x++;
     } while (r < Air && x < 10);
     s += r;
@@ -373,7 +381,6 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       debugOut(FPSTR(COMMA));
     }
   }
-  digitalWrite(MPOW, LOW);            // turn off moisture sensor
   int r = round((float)s / (float)numReads);
   if (VERBOSE) {
     debugOut(F("\b\b = "));
@@ -409,7 +416,7 @@ void doMe() {                             // called every 5 seconds to handle ba
       digitalWrite(LED_BUILTIN, HIGH);
       delay(20);
     }
-    writeConfig();
+    //writeConfig();
     caliCount = 0;
   }
   else if (caliCount > 0) calibrate();
@@ -557,10 +564,10 @@ void handleWWW(WiFiClient client) {                        // default request se
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.print(buf);
   client.flush();
+  yield();
+  client.stop();
 #ifdef DEBUG
   debugOutLN(" send status (" + String(strlen(buf)) + " bytes) at " + tim);
 #endif
-  yield();
-  client.stop();
 } // handleWWW()
 #endif // WWW

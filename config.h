@@ -11,6 +11,7 @@
 #define TELNET
 #define TELNET_PORT 23
 #define WWW           // enable WWW server status page
+#define STIME 15      // time delay between sampling analog input in milliseconds
 
 /* includes */
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
@@ -20,6 +21,7 @@
 #ifdef OTA
 #include <ArduinoOTA.h>         // Optional Over-the-Air updates
 #endif
+#include "EspSaveCrash.h"
 #include <time.h>
 #include <Math.h>
 #include <FS.h>
@@ -29,14 +31,14 @@
 #ifdef USERCONFIG
 #include "userconfig.h"
 #else
-String host = "SolarGuardn";
-String WIFI_SSID = "SSID";        // set WiFi and AIO here
-String WIFI_PASS = "PASSWORD";    // still working on runtime config
-String IO_USERNAME = "AIO-user";  // https://io.adafruit.com/
-String IO_KEY = "AIO-key";
-String OTA_PASS = "";
-String onURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1";
-String offURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0";
+#define HOST "SolarGuardn"
+#define WIFI_SSID "SSID"           // set WiFi and AIO here or in USERCONFIG
+#define WIFI_PASS "PASSWORD"       // still working on runtime config
+#define IO_USERNAME "AIO-user"     // https://io.adafruit.com/
+#define IO_KEY "AIO-key"
+#define OTA_PASS ""
+#define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
+#define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
 #endif
 
 int TZ = -6;
@@ -60,7 +62,7 @@ Adafruit_BME280 bme; // I2C
 #include "AdafruitIO_WiFi.h"        // install AdafruitIO and Adafruit_MQTT using Library manager
 #include "Adafruit_MQTT.h"          // <-- then modify this file with #define MAXSUBSCRIPTIONS 10
 #include "Adafruit_MQTT_Client.h"
-AdafruitIO_WiFi io(IO_USERNAME.c_str(), IO_KEY.c_str(), WIFI_SSID.c_str(), WIFI_PASS.c_str());
+AdafruitIO_WiFi io(IO_USERNAME, IO_KEY, WIFI_SSID, WIFI_PASS);
 AdafruitIO_Feed *IOtemp =     io.feed("temperature"); // ambient temperature
 AdafruitIO_Feed *IOhumid =    io.feed("humidity");    // relative humidity
 AdafruitIO_Feed *IOpressure = io.feed("pressure");    // atmospheric pressure
@@ -126,5 +128,5 @@ static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/htm
   <p>Abs Pressure: %s inHg</p>\
   <p>Soil Moisture: %u </p>\
 </body>\
-</html>\r\n";
+</html>";
 #endif
