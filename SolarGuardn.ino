@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.06 PRE-RELEASE 17-Oct-2017
+  SolarGuardn v0.7.06 PRE-RELEASE 19-Oct-2017
   by David Denney
 
   This code is offered "as is" with no warranty, expressed or implied, for any purpose,
@@ -32,7 +32,7 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  Serial.setDebugOutput(true);        // uncomment for extra library debugging
+  //Serial.setDebugOutput(true);      // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
@@ -126,6 +126,8 @@ void setup() {
   pinMode(BUTTON, INPUT);                         // flash button for calibration
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
 
+  controlWater(false);    // start with water control off
+
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
@@ -134,8 +136,6 @@ void setup() {
   debugOutLN(ttime());
   debugOutLN(FPSTR(NIL));
 #endif
-  sonoff("OFF");
-  delay(5000);
 } // setup()
 
 template <typename T> void debugOut(const T x) {
@@ -218,81 +218,6 @@ void espStats() {
              + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
 } // espStats()
 
-/*
-  void readConfig() {       // mount flash filesystem to read SPIFFS config file
-  if (SPIFFS.begin()) {
-  #ifdef DEBUG
-    debugOutLN(F("SPIFFS mounted."));
-  #endif
-  }
-  else {
-    debugOutLN(F("Could not mount file system!"));
-    ESP.restart();
-  }
-  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
-  else {
-    File f = SPIFFS.open(CONFIG, "r");
-  #ifdef DEBUG
-    debugOut(F("config.txt: "));
-    debugOut(f.size());
-    debugOutLN(F(" bytes"));
-  #endif
-    while (f.available()) {
-      String t = f.readStringUntil('\n');
-      t.trim();
-      t.replace("\"", "");
-      readConfig(t);
-    }
-    f.close();
-  }
-  } // readConfig()
-
-  void getConfig(String input) {
-  int e = input.indexOf("=") + 1;
-  if ((e == 1) || (e >= input.length())) return;
-  if (input.startsWith(F("host"))) host = input.substring(e);
-  else if (input.startsWith("TZ")) TZ = input.substring(e).toInt();
-  else if (input.startsWith("Air")) Air = input.substring(e).toInt();
-  else if (input.startsWith("Water")) Water = input.substring(e).toInt();
-  else if (input.startsWith("Fahrenheit")) Fahrenheit = input.substring(e).toInt();
-  else if (input.startsWith("WIFI_SSID")) WIFI_SSID = input.substring(e);
-  else if (input.startsWith("WIFI_PASS")) WIFI_PASS = input.substring(e);
-  #ifdef OTA
-  else if (input.startsWith("OTA_PASS")) OTA_PASS = input.substring(e);
-  #endif
-  else if (input.startsWith("IO_USERNAME")) IO_USERNAME = input.substring(e);
-  else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
-  else if (input.startsWith("onURL")) onURL = input.substring(e);
-  else if (input.startsWith("offURL")) offURL = input.substring(e);
-  } // getConfig()
-
-  void writeConfig() {
-  File f = SPIFFS.open(CONFIG, "w");
-  int c = 0;
-  if (!f) {
-    debugOutLN(F("Config write failed."));
-    return;
-  }
-  debugOutLN(F("Writing config to flash..."));
-  f.printf("host=%s\n", host.c_str());
-  f.printf("TZ=%d\n", TZ);
-  f.printf("Air=%d\n", Air);
-  f.printf("Water=%d\n", Water);
-  f.printf("Fahrenheit=%u\n", Fahrenheit);
-  f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
-  f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
-  #ifdef OTA
-  f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
-  #endif
-  f.printf("IO_USERNAME=%s\n", IO_USERNAME.c_str());
-  f.printf("IO_KEY=%s\n", IO_KEY.c_str());
-  f.printf("onURL=%s\n", onURL.c_str());
-  f.printf("offURL=%s\n", offURL.c_str());
-  f.close();
-  debugOutLN(F("Success!"));
-  } // writeConfig()
-*/
-
 void handleButton() {
   if (millis() - deBounce < 50) return;   // debounce button
   buttonState = digitalRead(BUTTON);      // read state of flash button
@@ -303,58 +228,31 @@ void handleButton() {
   }
 } // handleButton()
 
-void sonoff(String cmd) {         // control Sonoff module running ESPurna
+void controlWater(bool cmd) {         // control Sonoff module running ESPurna
   HTTPClient http;
-  if (cmd == "ON") {
+  if (cmd) {                          // true == turn on pump
     http.begin(onURL);
-    water = true;
     IOwater->save("ON");
-  }
-  else {
+    debugOut(F("Water ON"));
+  } else {
     http.begin(offURL);
-    water = false;
     IOwater->save("OFF");
+    debugOut(F("Water off"));
   }
   int httpCode = http.GET();
-#ifdef DEBUG
   if (httpCode > 0) {
-    debugOutLN("Sonoff " + cmd + " [HTTP] GET: " + String(httpCode));
-  } else {
-    debugOutLN("[HTTP] GET failed: " + http.errorToString(httpCode));
-  }
+#ifdef DEBUG
+    debugOutLN(" [HTTP] GET: " + String(httpCode));
 #endif
+    if (httpCode == HTTP_CODE_OK) {     // only change pump state if successful
+      water = cmd;
+      wTime = millis();                 // track how long pump is on
+    }
+  } else {
+    debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
+  }
   http.end();
 }
-
-void waterControl(String stat) {
-#ifdef DEBUG
-  debugOut(F(" "));
-  debugOut(stat);
-#endif
-  if (stat == "Dry") {
-    if (!water) {
-#ifdef DEBUG
-      debugOutLN(F(", water turned ON."));
-#endif
-      sonoff("ON");
-    } else {
-#ifdef DEBUG
-      debugOutLN(F(", water still ON."));
-#endif
-    }
-  } else {
-    if (water) {
-#ifdef DEBUG
-      debugOutLN(F(", water turned OFF."));
-#endif
-      sonoff("OFF");
-    } else {
-#ifdef DEBUG
-      debugOutLN(FPSTR(DOT));
-#endif
-    }
-  }
-} // waterControl()
 
 void calibrate() {
   debugOut(caliCount--);
@@ -373,7 +271,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       digitalWrite(MPOW, LOW);        // turn off moisture sensor
       delay(STIME);
       x++;
-    } while (r < Air && x < 10);
+    } while (r < Air && x < 10);      // ignore up to 10 invalid values
     s += r;
     if (VERBOSE) {                    // during calibration, output all values
       debugOut(r);
@@ -419,12 +317,23 @@ void doMe() {                             // called every 5 seconds to handle ba
       writeConfig();
       caliCount = 0;
     }
-    else*/  if (caliCount > 0) calibrate();
+    else */
+  if (caliCount > 0) calibrate();
 } // doMe()
 
-void loop() {                       /** MAIN LOOP **/
+void loop() {
+  for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
+    doMe();                               // while allowing background tasks to run every 5 seconds
+    if ((water) && ((readMoisture(false) > Air + interval) || (((millis() - wTime) / 1000) > MAXWATER))) controlWater(false);
+#ifdef DEBUG
+    debugOut(ttime());
+    debugOut(F(" ("));
+    debugOut(ESP.getFreeHeap());
+    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
+#endif
+    delay(5000);                          // delay() allows background tasks to run each invocation
+  }
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
-  doMe();                           // non-sensor loop stuff
   readBME();
   soil = readMoisture(false);
 #ifdef DEBUG
@@ -437,9 +346,14 @@ void loop() {                       /** MAIN LOOP **/
   debugOut(F(" inHg, "));
   debugOut(soil);
 #endif
-  if (soil > (Water - interval)) waterControl("Soaked");
-  else if (soil > (Air + interval)) waterControl("Wet");
-  else waterControl("Dry");
+  if (soil > (Air + interval)) {
+    if (soil > (Water - interval)) debugOutLN(F(" soaked."));
+    else debugOutLN(F(" wet."));
+    if (water) controlWater(false);
+  } else {
+    debugOutLN(F(" dry."));
+    if (!water) controlWater(true);
+  }
 
   if (soil != soil_l) {                   // if moisture level has changed then
 #ifdef DEBUG
@@ -483,16 +397,6 @@ void loop() {                       /** MAIN LOOP **/
 
   digitalWrite(LED_BUILTIN, HIGH);        // turn off LED before sleep loop
 
-  for (int x = 0; x < 12; x++) {          // sleeping loop between moisture readings to save power
-    doMe();
-#ifdef DEBUG
-    debugOut(ttime());
-    debugOut(F(" ("));
-    debugOut(ESP.getFreeHeap());
-    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
-#endif
-    delay(5000);                          // delay() allows background tasks to run each invocation
-  }
 } // loop()
 
 String ttime() {
@@ -568,3 +472,78 @@ void handleWWW(WiFiClient client) {                        // default request se
 #endif
 } // handleWWW()
 #endif // WWW
+
+/*
+  void readConfig() {       // mount flash filesystem to read SPIFFS config file
+  if (SPIFFS.begin()) {
+  #ifdef DEBUG
+    debugOutLN(F("SPIFFS mounted."));
+  #endif
+  }
+  else {
+    debugOutLN(F("Could not mount file system!"));
+    ESP.restart();
+  }
+  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
+  else {
+    File f = SPIFFS.open(CONFIG, "r");
+  #ifdef DEBUG
+    debugOut(F("config.txt: "));
+    debugOut(f.size());
+    debugOutLN(F(" bytes"));
+  #endif
+    while (f.available()) {
+      String t = f.readStringUntil('\n');
+      t.trim();
+      t.replace("\"", "");
+      readConfig(t);
+    }
+    f.close();
+  }
+  } // readConfig()
+
+  void getConfig(String input) {
+  int e = input.indexOf("=") + 1;
+  if ((e == 1) || (e >= input.length())) return;
+  if (input.startsWith(F("host"))) host = input.substring(e);
+  else if (input.startsWith("TZ")) TZ = input.substring(e).toInt();
+  else if (input.startsWith("Air")) Air = input.substring(e).toInt();
+  else if (input.startsWith("Water")) Water = input.substring(e).toInt();
+  else if (input.startsWith("Fahrenheit")) Fahrenheit = input.substring(e).toInt();
+  else if (input.startsWith("WIFI_SSID")) WIFI_SSID = input.substring(e);
+  else if (input.startsWith("WIFI_PASS")) WIFI_PASS = input.substring(e);
+  #ifdef OTA
+  else if (input.startsWith("OTA_PASS")) OTA_PASS = input.substring(e);
+  #endif
+  else if (input.startsWith("IO_USERNAME")) IO_USERNAME = input.substring(e);
+  else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
+  else if (input.startsWith("onURL")) onURL = input.substring(e);
+  else if (input.startsWith("offURL")) offURL = input.substring(e);
+  } // getConfig()
+
+  void writeConfig() {
+  File f = SPIFFS.open(CONFIG, "w");
+  int c = 0;
+  if (!f) {
+    debugOutLN(F("Config write failed."));
+    return;
+  }
+  debugOutLN(F("Writing config to flash..."));
+  f.printf("host=%s\n", host.c_str());
+  f.printf("TZ=%d\n", TZ);
+  f.printf("Air=%d\n", Air);
+  f.printf("Water=%d\n", Water);
+  f.printf("Fahrenheit=%u\n", Fahrenheit);
+  f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
+  f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
+  #ifdef OTA
+  f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
+  #endif
+  f.printf("IO_USERNAME=%s\n", IO_USERNAME.c_str());
+  f.printf("IO_KEY=%s\n", IO_KEY.c_str());
+  f.printf("onURL=%s\n", onURL.c_str());
+  f.printf("offURL=%s\n", offURL.c_str());
+  f.close();
+  debugOutLN(F("Success!"));
+  } // writeConfig()
+*/

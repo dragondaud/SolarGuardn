@@ -13,6 +13,7 @@
 #define WWW           // enable WWW server status page
 #define STIME 200     // time delay between sampling analog input in milliseconds
 #define nREAD 3       // number of samples to average
+#define MAXWATER 60   // Max time, in seconds, to water
 
 /* includes */
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
@@ -40,11 +41,11 @@
 #define IO_USERNAME "AIO-user"     // https://io.adafruit.com/
 #define IO_KEY "AIO-key"
 #define OTA_PASS ""
+#define TZ -6                      // timezone offset from GMT
 #define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
 #define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
 #endif
 
-int TZ = -6;                       // time zone offset
 int Air = 220;                     // sensor value, in air
 int Water = 640;                   // sensor value, in water
 int interval = (Water - Air) / 3;  // split into dry, wet, soaked
@@ -101,7 +102,7 @@ int temp_l = 0, humid_l = 0;
 int relay = 0, water = 0;
 int pressure = 0, pressure_l = 0;
 int caliCount = 0;
-int deBounce = 0;
+long deBounce = 0, wTime = 0;
 
 volatile int buttonState = HIGH;
 
