@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.06 PRE-RELEASE 19-Oct-2017
+  SolarGuardn v0.7.06 PRE-RELEASE 20-Oct-2017
   by David Denney
 
   This code is offered "as is" with no warranty, expressed or implied, for any purpose,
@@ -37,6 +37,8 @@ void setup() {
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
   debugOutLN(VERSION);
+
+  readConfig();                       // mount SPIFFS, config file not implemented yet
 
   /* AdafruitIO */
 #ifdef DEBUG
@@ -125,9 +127,7 @@ void setup() {
   digitalWrite(MPOW, LOW);                        //  - initially off
   pinMode(BUTTON, INPUT);                         // flash button for calibration
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
-
-  controlWater(false);    // start with water control off
-
+  controlWater(false);                            // start with water control off
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
@@ -136,6 +136,7 @@ void setup() {
   debugOutLN(ttime());
   debugOutLN(FPSTR(NIL));
 #endif
+  delay(5000);  // wait for NTP
 } // setup()
 
 template <typename T> void debugOut(const T x) {
@@ -231,6 +232,7 @@ void handleButton() {
 void controlWater(bool cmd) {         // control Sonoff module running ESPurna
   HTTPClient http;
   if (cmd) {                          // true == turn on pump
+    if ((wTime) && (((millis() - wTime) / 1000) < MINWAIT)) return; // wait before turning pump back on
     http.begin(onURL);
     IOwater->save("ON");
     debugOut(F("Water ON"));
@@ -244,9 +246,9 @@ void controlWater(bool cmd) {         // control Sonoff module running ESPurna
 #ifdef DEBUG
     debugOutLN(" [HTTP] GET: " + String(httpCode));
 #endif
-    if (httpCode == HTTP_CODE_OK) {     // only change pump state if successful
+    if (httpCode == HTTP_CODE_OK) {             // only change pump state if successful
+      if ((water) || (cmd)) wTime = millis();   // track pump time
       water = cmd;
-      wTime = millis();                 // track how long pump is on
     }
   } else {
     debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
@@ -322,17 +324,6 @@ void doMe() {                             // called every 5 seconds to handle ba
 } // doMe()
 
 void loop() {
-  for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
-    doMe();                               // while allowing background tasks to run every 5 seconds
-    if ((water) && ((readMoisture(false) > Air + interval) || (((millis() - wTime) / 1000) > MAXWATER))) controlWater(false);
-#ifdef DEBUG
-    debugOut(ttime());
-    debugOut(F(" ("));
-    debugOut(ESP.getFreeHeap());
-    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
-#endif
-    delay(5000);                          // delay() allows background tasks to run each invocation
-  }
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
   readBME();
   soil = readMoisture(false);
@@ -347,14 +338,22 @@ void loop() {
   debugOut(soil);
 #endif
   if (soil > (Air + interval)) {
+#ifdef DEBUG
     if (soil > (Water - interval)) debugOutLN(F(" soaked."));
     else debugOutLN(F(" wet."));
-    if (water) controlWater(false);
+#endif
+    if (water) {
+      if (soil > (Water - interval)) {
+        IOdebug->save("soaked off");
+      } else IOdebug->save("wet off");
+      controlWater(false);
+    }
   } else {
+#ifdef DEBUG
     debugOutLN(F(" dry."));
+#endif
     if (!water) controlWater(true);
   }
-
   if (soil != soil_l) {                   // if moisture level has changed then
 #ifdef DEBUG
     debugOutLN("save moisture " + String(soil));
@@ -362,7 +361,6 @@ void loop() {
     IOmoist->save(soil);                  // store soil moisture
     soil_l = soil;
   }
-
   int tt = round(temp);                   // round off temperature
   if (tt != temp_l && tt < 120) {         // if temp has changed and is valid then
 #ifdef DEBUG
@@ -373,7 +371,6 @@ void loop() {
     IOtemp->save(tt);                      // store rounded temp
     temp_l = tt;
   }
-
   int hh = round(humid);                   // round off humidity
   if (hh != humid_l && hh <= 100) {         // if humidity has changed and is valid then
 #ifdef DEBUG
@@ -382,7 +379,6 @@ void loop() {
     IOhumid->save(hh);                     // store rounded humidity
     humid_l = hh;
   }
-
   if (pressure != pressure_l && pressure <= 3000) { // if pressure has changed and is valid then
     char p[10];
     dtostrf(pressure / 100.0F, 5, 2, p);            // convert to string with two decimal places
@@ -394,9 +390,24 @@ void loop() {
     IOpressure->save(p);                            // store inHg pressure
     pressure_l = pressure;
   }
-
   digitalWrite(LED_BUILTIN, HIGH);        // turn off LED before sleep loop
-
+  for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
+    doMe();                               // while allowing background tasks to run every 5 seconds
+    if ((water) && ((readMoisture(false) > Air + interval) || (((millis() - wTime) / 1000) > MAXWATER))) {
+#ifdef DEBUG
+      debugOutLN(F("MAXTIME exceeded"));
+#endif
+      IOdebug->save("time off");
+      controlWater(false);
+    }
+#ifdef DEBUG
+    debugOut(ttime());
+    debugOut(F(" ("));
+    debugOut(ESP.getFreeHeap());
+    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
+#endif
+    delay(5000);                          // delay() allows background tasks to run each invocation
+  }
 } // loop()
 
 String ttime() {
@@ -415,11 +426,10 @@ void handleWWW(WiFiClient client) {                        // default request se
   String tim = ttime(), upt = upTime();
   client.flush();
 #ifdef DEBUG
-  debugOutLN(FPSTR(NIL));
+  //IOdebug->save("WWW " + client.remoteIP().toString());
   debugOut(req);
   debugOut(F(" from "));
   debugOut(client.remoteIP());
-  IOdebug->save("WWW " + client.remoteIP().toString());
 #endif
   req.toUpperCase();
   if (req.startsWith("GET /FAV")) {                       // send favicon.ico from data directory
@@ -473,17 +483,20 @@ void handleWWW(WiFiClient client) {                        // default request se
 } // handleWWW()
 #endif // WWW
 
-/*
-  void readConfig() {       // mount flash filesystem to read SPIFFS config file
+void readConfig() {       // mount flash filesystem to read SPIFFS config file
   if (SPIFFS.begin()) {
-  #ifdef DEBUG
+#ifdef DEBUG
     debugOutLN(F("SPIFFS mounted."));
-  #endif
+#endif
+    return;
   }
   else {
     debugOutLN(F("Could not mount file system!"));
+    delay(500);
     ESP.restart();
   }
+}
+/*
   if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
   else {
     File f = SPIFFS.open(CONFIG, "r");

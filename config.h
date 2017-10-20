@@ -11,9 +11,10 @@
 #define TELNET
 #define TELNET_PORT 23
 #define WWW           // enable WWW server status page
-#define STIME 200     // time delay between sampling analog input in milliseconds
+#define STIME 100     // time delay between sampling analog input in milliseconds
 #define nREAD 3       // number of samples to average
 #define MAXWATER 60   // Max time, in seconds, to water
+#define MINWAIT 300   // Wait at least 5 minutes before watering again
 
 /* includes */
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
