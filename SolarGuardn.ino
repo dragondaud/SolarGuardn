@@ -7,7 +7,7 @@
 
   Master repository: https://github.com/dragondaud/SolarGuardn
 
-  See config.h for configurable settings and all includes.
+  See config.h for configurable settings and includes.
 
   Designed to run on an ESP-12E NodeMCU board with additional hardware,
   this sketch will monitor soil conditions, ambient temperature, humidity
@@ -16,8 +16,7 @@
   A builtin WWW server provides direct access to current data, /reset will reboot, /calibrate starts calibration.
   Telnet server allows remote monitoring and debugging when serial is not practical.
 
-  Press FLASH button on NodeMCU to enter moisture sensor calibration mode, adjust input pot, monitor serial
-  Press FLASH button twice rapidly to store current running config to SPIFFS
+  Press FLASH button on NodeMCU to enter moisture sensor calibration mode, see calibration.md
 
   Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP
 
@@ -32,7 +31,7 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  //Serial.setDebugOutput(true);      // uncomment for extra debugging
+  Serial.setDebugOutput(true);        // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
@@ -44,7 +43,6 @@ void setup() {
 #ifdef DEBUG
   debugOut(F("Connecting to Adafruit IO"));
 #endif
-  /* add runtime config of AdafruitIO_WiFi io(IO_USERNAME.c_str(), IO_KEY.c_str(), WIFI_SSID.c_str(), WIFI_PASS.c_str()); */
   WiFi.hostname(HOST);
   io.connect();
   while (io.status() < AIO_CONNECTED) {
@@ -197,7 +195,9 @@ String upTime() {
 } // upTime()
 
 void espStats() {
-  debugOut(F("\r\nWiFi Hostname: "));
+  debugOut(F("last reset: "));
+  debugOutLN(ESP.getResetReason());
+  debugOut(F("WiFi Hostname: "));
   debugOutLN(WiFi.hostname());
   debugOut(F("WiFi IP addr: "));
   debugOutLN(WiFi.localIP());
@@ -213,8 +213,6 @@ void espStats() {
   debugOutLN(ESP.getFreeHeap());
   debugOut(F("ESP uptime: "));
   debugOutLN(upTime());
-  debugOut(F("ESP last reset: "));
-  debugOutLN(ESP.getResetReason());
   debugOutLN("Moisture range: " + String(Water) + " > Soaked > " + String(Water - interval) \
              + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
 } // espStats()
@@ -224,8 +222,8 @@ void handleButton() {
   buttonState = digitalRead(BUTTON);      // read state of flash button
   if (buttonState == LOW) return;         // button down, do nothing
   else {
-    caliCount += 12;                      // each button release, calibrate +12 loops (1 min)
-    deBounce = millis();                  // and debounce
+    startCalibrate = true;
+    deBounce = millis();                  // debounce button press
   }
 } // handleButton()
 
@@ -234,32 +232,49 @@ void controlWater(bool cmd) {         // control Sonoff module running ESPurna
   if (cmd) {                          // true == turn on pump
     if ((wTime) && (((millis() - wTime) / 1000) < MINWAIT)) return; // wait before turning pump back on
     http.begin(onURL);
-    IOwater->save("ON");
+#ifdef DEBUG
     debugOut(F("Water ON"));
+#endif
   } else {
     http.begin(offURL);
-    IOwater->save("OFF");
+#ifdef DEBUG
     debugOut(F("Water off"));
+#endif
   }
   int httpCode = http.GET();
   if (httpCode > 0) {
 #ifdef DEBUG
-    debugOutLN(" [HTTP] GET: " + String(httpCode));
+    debugOutLN("; [HTTP] GET: " + String(httpCode));
 #endif
     if (httpCode == HTTP_CODE_OK) {             // only change pump state if successful
       if ((water) || (cmd)) wTime = millis();   // track pump time
       water = cmd;
+      if (cmd) IOwater->save("ON");
+      else IOwater->save("OFF");
     }
   } else {
+    IOdebug->save(http.errorToString(httpCode));
     debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
   }
   http.end();
 }
 
 void calibrate() {
-  debugOut(caliCount--);
-  debugOut(F(") "));
-  readMoisture(true);
+  debugOutLN(F("==Calibrate Start=="));
+  for (int i = 1; i <= 25; i++) {
+    yield();
+    digitalWrite(MPOW, HIGH);
+    delay(i * 10);
+    debugOut(String(i * 10) + ":");
+    int r = 1023 - analogRead(MOIST);
+    digitalWrite(MPOW, LOW);
+    debugOut(r);
+    delay(i * 12);
+    if ((i == 10) || (i == 19) || (i == 25)) debugOut(FPSTR(EOL));
+    else debugOut(F(", "));
+  }
+  debugOutLN(F("==Calibrate End=="));
+  startCalibrate = false;
 } // calibrate()
 
 int readMoisture(bool VERBOSE) {      // analog input smoothing
@@ -271,7 +286,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       delay(STIME);
       r = 1023 - analogRead(MOIST);   // read analog value from moisture sensor (invert for capacitance sensor)
       digitalWrite(MPOW, LOW);        // turn off moisture sensor
-      delay(STIME);
+      delay(STIME * 1.2);
       x++;
     } while (r < Air && x < 10);      // ignore up to 10 invalid values
     s += r;
@@ -309,21 +324,11 @@ void doMe() {                             // called every 5 seconds to handle ba
 #ifdef TELNET
   handleTelnet();                          // handle telnet server
 #endif
-  /*  if (caliCount >= 24 ) {                  // double press flash to save config
-      for (int i = 0; i < 10; i++) {
-        digitalWrite(LED_BUILTIN, LOW);    // flash LED so we know it worked
-        delay(20);
-        digitalWrite(LED_BUILTIN, HIGH);
-        delay(20);
-      }
-      writeConfig();
-      caliCount = 0;
-    }
-    else */
-  if (caliCount > 0) calibrate();
+  if (startCalibrate) calibrate();
 } // doMe()
 
 void loop() {
+  doMe();
   digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
   readBME();
   soil = readMoisture(false);
@@ -394,9 +399,6 @@ void loop() {
   for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
     doMe();                               // while allowing background tasks to run every 5 seconds
     if ((water) && ((readMoisture(false) > Air + interval) || (((millis() - wTime) / 1000) > MAXWATER))) {
-#ifdef DEBUG
-      debugOutLN(F("MAXTIME exceeded"));
-#endif
       IOdebug->save("time off");
       controlWater(false);
     }
@@ -459,7 +461,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println();
     client.flush();
     client.stop();
-    caliCount += 12;
+    startCalibrate = true;
     return;
   }
   else if (req.startsWith("GET /RESET")) {                // RESET will restart ESP
@@ -474,7 +476,9 @@ void handleWWW(WiFiClient client) {                        // default request se
   }
   dtostrf(pressure / 100.0F, 5, 2, p);
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
-  client.print(buf);
+  client.println(buf);
+  client.println("<svg height=90 width=240><text x=0 y=20 fill=red transform=\"rotate(30 20,40)\">TOP SECRET</text></svg>");
+  client.println("</body></html>");
   client.flush();
   client.stop();
 #ifdef DEBUG

@@ -2,19 +2,36 @@
 
 #define VERSION     "0.7.06"
 
-#define USERCONFIG    // include local user config, ignored by git
+#define SAVE_CRASH_SPACE_SIZE 0x1000  // space reserved to store crash data
 
-/* Compile time options */
-#define OTA
-#define OTA_PORT 8266
-#define DEBUG         // Output messages on serial (and telnet if enabled)
-#define TELNET
+/** BEGIN USER CONFIG **/
+#define USERCONFIG              // include local user config, ignored by git, instead of defaults
+#ifdef USERCONFIG
+#include "userconfig.h"         // copy following defines to userconfig.h and edit as needed
+#else
+#define HOST "SolarGuardn"
+#define DEBUG                   // Output messages on serial (and telnet if enabled)
+#define TELNET                  // enable telnet server to view debug messages
 #define TELNET_PORT 23
-#define WWW           // enable WWW server status page
-#define STIME 100     // time delay between sampling analog input in milliseconds
-#define nREAD 3       // number of samples to average
-#define MAXWATER 60   // Max time, in seconds, to water
-#define MINWAIT 300   // Wait at least 5 minutes before watering again
+#define OTA                     // enable OTA updates
+#define OTA_PORT 8266
+#define OTA_PASS ""             // set OTA update password or blank for none
+#define WWW                     // enable WWW server status page
+#define STIME 120               // time delay between sampling analog input in milliseconds
+#define nREAD 3                 // number of samples to average
+#define MAXWATER 60             // Max time, in seconds, to water
+#define MINWAIT 300             // Wait at least 5 minutes before watering again
+#define WIFI_SSID "SSID"        // set WiFi and AIO here or in USERCONFIG
+#define WIFI_PASS "PASSWORD"    // still working on runtime config
+#define IO_USERNAME "AIO-user"  // https://io.adafruit.com/
+#define IO_KEY "AIO-key"
+#define TZ -6                   // timezone offset from GMT
+#define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
+#define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
+#endif // USERCONFIG
+/** END USER CONFIG **/
+
+//#define CONFIG  "/config.txt"     // SPIFFS config file (disabled)
 
 /* includes */
 #include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
@@ -30,30 +47,10 @@
 #include <FS.h>
 #include <pgmspace.h>           // for flash constants to save ram
 
-#define SAVE_CRASH_SPACE_SIZE   0x07FF  // space reserved to store crash data
-
-/** BEGIN USER CONFIG **/
-#ifdef USERCONFIG
-#include "userconfig.h"
-#else
-#define HOST "SolarGuardn"
-#define WIFI_SSID "SSID"           // set WiFi and AIO here or in USERCONFIG
-#define WIFI_PASS "PASSWORD"       // still working on runtime config
-#define IO_USERNAME "AIO-user"     // https://io.adafruit.com/
-#define IO_KEY "AIO-key"
-#define OTA_PASS ""
-#define TZ -6                      // timezone offset from GMT
-#define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
-#define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
-#endif
-
 int Air = 220;                     // sensor value, in air
 int Water = 640;                   // sensor value, in water
 int interval = (Water - Air) / 3;  // split into dry, wet, soaked
 bool Fahrenheit = true;            // display Temp in Fahrenheit
-/** END USER CONFIG **/
-
-#define CONFIG  "/config.txt"     // SPIFFS config file
 
 /* BME280 config **/
 #include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using library manager
@@ -102,7 +99,7 @@ float temp = 0, humid = 0;
 int temp_l = 0, humid_l = 0;
 int relay = 0, water = 0;
 int pressure = 0, pressure_l = 0;
-int caliCount = 0;
+int startCalibrate = 0;
 long deBounce = 0, wTime = 0;
 
 volatile int buttonState = HIGH;
@@ -131,7 +128,5 @@ static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/htm
   <p>Temperature: %u &deg;F</p>\
   <p>Humidity: %u%% RH</p>\
   <p>Abs Pressure: %s inHg</p>\
-  <p>Soil Moisture: %u </p>\
-</body>\
-</html>";
+  <p>Soil Moisture: %u </p>";
 #endif
