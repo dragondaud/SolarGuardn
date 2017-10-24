@@ -1,8 +1,8 @@
 /* SolarGuardn config.h */
 
-#define VERSION     "0.7.06"
+#define VERSION     "0.7.07"
 
-#define SAVE_CRASH_SPACE_SIZE 0x1000  // space reserved to store crash data
+#define SAVE_CRASH_SPACE_SIZE 0x1000  // FLASH space reserved to store crash data
 
 /** BEGIN USER CONFIG **/
 #define USERCONFIG              // include local user config, ignored by git, instead of defaults
@@ -12,9 +12,9 @@
 #define HOST "SolarGuardn"
 #define DEBUG                   // Output messages on serial (and telnet if enabled)
 #define TELNET                  // enable telnet server to view debug messages
-#define TELNET_PORT 23
+#define TELNET_PORT 23          // telnet standard port
 #define OTA                     // enable OTA updates
-#define OTA_PORT 8266
+#define OTA_PORT 8266           // default port 8266
 #define OTA_PASS ""             // set OTA update password or blank for none
 #define WWW                     // enable WWW server status page
 #define STIME 120               // time delay between sampling analog input in milliseconds
@@ -29,41 +29,40 @@
 #define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
 #define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
 #endif // USERCONFIG
+//#define CONFIG  "/config.txt"     // SPIFFS config file (disabled)
 /** END USER CONFIG **/
 
-//#define CONFIG  "/config.txt"     // SPIFFS config file (disabled)
-
 /* includes */
-#include <ESP8266WiFi.h>        // Install Arduino core for ESP8266 from:
-#include <ESP8266mDNS.h>        // https://github.com/esp8266/Arduino
-#include <ESP8266HTTPClient.h>  // use current from git, not 2.3.0 release
-#include <WiFiUdp.h>            // provides each of these libraries
-#ifdef OTA
-#include <ArduinoOTA.h>         // Optional Over-the-Air updates
-#endif
-#include "EspSaveCrash.h"
+#include <ESP8266WiFi.h>          // Using 2.4.0-rc1 ESP8266 Arduino core from:
+#include <ESP8266mDNS.h>          // ** https://github.com/esp8266/Arduino
+#include <ESP8266HTTPClient.h>    // **
+#include <WiFiUdp.h>              // ** provides each of these libraries
+#ifdef OTA                        // **
+#include <ArduinoOTA.h>           // ** Optional Over-the-Air updates
+#endif                            // ******************************************
+#include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
+#include <Adafruit_BME280.h>
+#include "AdafruitIO_WiFi.h"      // install AdafruitIO and Adafruit_MQTT using Library Manager
+#include "Adafruit_MQTT.h"        // <-- then modify this file with #define MAXSUBSCRIPTIONS 10
+#include "Adafruit_MQTT_Client.h"
+#include "EspSaveCrash.h"         // https://github.com/krzychb/EspSaveCrash
 #include <time.h>
 #include <Math.h>
 #include <FS.h>
-#include <pgmspace.h>           // for flash constants to save ram
+#include <pgmspace.h>               // for flash constants to save ram
 
-int Air = 220;                     // sensor value, in air
-int Water = 640;                   // sensor value, in water
-int interval = (Water - Air) / 3;  // split into dry, wet, soaked
-bool Fahrenheit = true;            // display Temp in Fahrenheit
+int Air = 220;                      // sensor value, in air
+int Water = 640;                    // sensor value, in water
+int interval = (Water - Air) / 3;   // split into dry, wet, soaked
+bool Fahrenheit = true;             // display Temp in Fahrenheit
 
 /* BME280 config **/
-#include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using library manager
-#include <Adafruit_BME280.h>
 #include <Wire.h>
-#define BMEid 0x76                // BME280 I2C id, default 0x77, alt is 0x76
-Adafruit_BME280 bme; // I2C
-bool BME = false;                  // is BME sensor present
+#define BMEid 0x76                  // BME280 I2C id, default 0x77, alt is 0x76
+Adafruit_BME280 bme;                // using I2C comms
+bool BME = false;                   // is BME sensor present
 
 /** Adafruit IO Config **/
-#include "AdafruitIO_WiFi.h"        // install AdafruitIO and Adafruit_MQTT using Library manager
-#include "Adafruit_MQTT.h"          // <-- then modify this file with #define MAXSUBSCRIPTIONS 10
-#include "Adafruit_MQTT_Client.h"
 AdafruitIO_WiFi io(IO_USERNAME, IO_KEY, WIFI_SSID, WIFI_PASS);
 AdafruitIO_Feed *IOtemp =     io.feed("temperature"); // ambient temperature
 AdafruitIO_Feed *IOhumid =    io.feed("humidity");    // relative humidity

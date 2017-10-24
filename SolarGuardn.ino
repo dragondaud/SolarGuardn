@@ -1,6 +1,8 @@
 /*
-  SolarGuardn v0.7.06 PRE-RELEASE 20-Oct-2017
+  SolarGuardn v0.7.07 PRE-RELEASE 24-Oct-2017
   by David Denney
+
+  Monitors garden conditions, cycles irrigation control as needed, reports data using MQTT.
 
   This code is offered "as is" with no warranty, expressed or implied, for any purpose,
   and is released to the public domain, while all libraries retain their respective licenses.
@@ -22,16 +24,26 @@
 
   Some code is based on examples from the ESP8266, ArduinoOTA and other libraries.
 
-  Sketch requires ESP8266 library v2.4.0, docs at: https://arduino-esp8266.readthedocs.io/en/2.4.0-rc1/
+  Sketch requires ESP8266 library v2.4.0-rc1, docs at: https://arduino-esp8266.readthedocs.io/en/2.4.0-rc1/
   You can use the release candidate by adding  this to File->Preferences->Additional Board Manager URLs:
     https://github.com/esp8266/Arduino/releases/download/2.4.0-rc1/package_esp8266com_index.json
 */
 
 #include "config.h"
 
+void ICACHE_RAM_ATTR handleButton() {
+  if (millis() - deBounce < 50) return;   // debounce button
+  buttonState = digitalRead(BUTTON);      // read state of flash button
+  if (buttonState == LOW) return;         // button down, do nothing
+  else {
+    startCalibrate = true;
+    deBounce = millis();                  // debounce button press
+  }
+} // handleButton()
+
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  Serial.setDebugOutput(true);        // uncomment for extra debugging
+  //Serial.setDebugOutput(true);        // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(FPSTR(NIL));
   debugOut(F("SolarGuardn v"));
@@ -55,14 +67,6 @@ void setup() {
   debugOutLN(FPSTR(NIL));
   debugOutLN(io.statusText());
 #endif
-
-#ifdef TELNET
-#ifdef DEBUG
-  debugOutLN(F("telnet server started"));
-#endif
-  telnetServer.begin();
-  telnetServer.setNoDelay(false); // drops chars if set true
-#endif // TELNET
 
   /* configTime sntp */
   configTime((TZ * 3600), 0, "pool.ntp.org", "time.nist.gov");
@@ -126,6 +130,15 @@ void setup() {
   pinMode(BUTTON, INPUT);                         // flash button for calibration
   attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
   controlWater(false);                            // start with water control off
+
+#ifdef TELNET
+#ifdef DEBUG
+  debugOutLN(F("telnet server started"));
+#endif
+  telnetServer.begin();
+  //telnetServer.setNoDelay(true); // drops chars if set true
+#endif // TELNET
+
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
@@ -142,11 +155,9 @@ template <typename T> void debugOut(const T x) {
 #ifdef TELNET
   if (telnetClient && telnetClient.connected()) {
     telnetClient.print(x);
-    telnetClient.flush();
   }
 #endif
   yield();
-  Serial.flush();
 } // debugOut()
 
 template <typename T> void debugOutLN(const T x) {
@@ -160,12 +171,10 @@ void handleTelnet(void) {
     if (!telnetClient || !telnetClient.connected()) {
       if (telnetClient) {
         telnetClient.stop();
-#ifdef DEBUG
-        debugOutLN(F("\r\ntelnet client stopped"));
-#endif
       }
       telnetClient = telnetServer.available();
       telnetClient.flush();
+      yield();
 #ifdef DEBUG
       debugOut(F("\r\ntelnet connected from "));
       debugOutLN(telnetClient.remoteIP());
@@ -176,9 +185,6 @@ void handleTelnet(void) {
 #endif
     } else {
       telnetServer.available().stop();
-#ifdef DEBUG
-      debugOutLN(F("\r\ntelnet disconnected"));
-#endif
     }
   }
 } // handleTelnet()
@@ -205,6 +211,10 @@ void espStats() {
   debugOutLN(WiFi.macAddress());
   debugOut(F("WiFi Strength: "));
   debugOutLN(WiFi.RSSI());
+  debugOut(F("ESP core version: "));
+  debugOutLN(ESP.getCoreVersion());
+  debugOut(F("ESP SDK version: "));
+  debugOutLN(ESP.getSdkVersion());
   debugOut(F("ESP sketch size: "));
   debugOutLN(ESP.getSketchSize());
   debugOut(F("ESP free flash: "));
@@ -216,16 +226,6 @@ void espStats() {
   debugOutLN("Moisture range: " + String(Water) + " > Soaked > " + String(Water - interval) \
              + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
 } // espStats()
-
-void handleButton() {
-  if (millis() - deBounce < 50) return;   // debounce button
-  buttonState = digitalRead(BUTTON);      // read state of flash button
-  if (buttonState == LOW) return;         // button down, do nothing
-  else {
-    startCalibrate = true;
-    deBounce = millis();                  // debounce button press
-  }
-} // handleButton()
 
 void controlWater(bool cmd) {         // control Sonoff module running ESPurna
   HTTPClient http;
@@ -312,19 +312,23 @@ void readBME() {
 }                                                 /*-- add configure option for hPa or inHg --*/
 
 void doMe() {                             // called every 5 seconds to handle background tasks
+#ifdef TELNET
+  handleTelnet();                          // handle telnet server
   yield();                                // process background tasks
+#endif
 #ifdef OTA
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
+  yield();
 #endif
   io.run();                               // handle AdafruitIO messages
+  yield();
 #ifdef WWW
   WiFiClient client = wwwServer.available(); // serve web requests
   if (client) handleWWW(client);
-#endif
-#ifdef TELNET
-  handleTelnet();                          // handle telnet server
+  yield();
 #endif
   if (startCalibrate) calibrate();
+  yield();
 } // doMe()
 
 void loop() {
@@ -403,13 +407,10 @@ void loop() {
       controlWater(false);
     }
 #ifdef DEBUG
-    debugOut(ttime());
-    debugOut(F(" ("));
-    debugOut(ESP.getFreeHeap());
-    debugOut(F(" free) \033[K\r"));       // Arduino serial monitor does not support CR, use PuTTY
+    debugOut(ttime() + " (" + ESP.getFreeHeap() + " free) \033[K\r");
 #endif
     delay(5000);                          // delay() allows background tasks to run each invocation
-  }
+  } // for x
 } // loop()
 
 String ttime() {
@@ -417,7 +418,7 @@ String ttime() {
   String t = ctime(&now);
   t.trim();                               // formated time contains crlf
   return t;
-}
+} // ttime()
 
 #ifdef WWW
 void handleWWW(WiFiClient client) {                        // default request serves STATUS page
@@ -477,7 +478,6 @@ void handleWWW(WiFiClient client) {                        // default request se
   dtostrf(pressure / 100.0F, 5, 2, p);
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.println(buf);
-  client.println("<svg height=90 width=240><text x=0 y=20 fill=red transform=\"rotate(30 20,40)\">TOP SECRET</text></svg>");
   client.println("</body></html>");
   client.flush();
   client.stop();
