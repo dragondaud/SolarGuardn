@@ -105,15 +105,15 @@ volatile int buttonState = HIGH;
 
 /** FLASH constants, to save on RAM **/
 
-static const PROGMEM char NIL[] = "";
 static const PROGMEM char DOT[] = ".";
 static const PROGMEM char COMMA[] = ", ";
 static const PROGMEM char EOL[] = "\033[K\r\n";
 
 #ifdef WWW
+static const PROGMEM char HTTPOK[] = "HTTP/1.1 200 OK";
 static const PROGMEM char WWWSTAT[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\
 <html><head>\
-  <meta http-equiv='refresh' content='60'/>\
+  <meta http-equiv='refresh' content='60;URL=/'/>\
   <link rel=\"shortcut icon\" href=\"fav.ico\" type=\"image/x-icon\" />\
   <title>SolarGuardn</title>\
   <style>\

@@ -1,0 +1,17 @@
+Install Arduino IDE from http://www.arduino.cc/en/main/software
+Install Python 2.7-latest from https://www.python.org/downloads/windows/
+Install Github from https://central.github.com/deployments/desktop/desktop/latest/win32
+
+launch Git Bash:
+
+cd ~/Documents/Arduino/
+mkdir hardware
+cd hardware
+mkdir esp8266com
+cd esp8266com
+git clone https://github.com/esp8266/Arduino.git esp8266
+cd esp8266
+git fetch origin pull/3362/head:lwip2v2
+git merge lwip2v2
+cd tools
+python get.py

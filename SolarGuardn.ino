@@ -31,7 +31,8 @@
 
 #include "config.h"
 
-void ICACHE_RAM_ATTR handleButton() {
+/*
+  void ICACHE_RAM_ATTR handleButton() {
   if (millis() - deBounce < 50) return;   // debounce button
   buttonState = digitalRead(BUTTON);      // read state of flash button
   if (buttonState == LOW) return;         // button down, do nothing
@@ -39,13 +40,14 @@ void ICACHE_RAM_ATTR handleButton() {
     startCalibrate = true;
     deBounce = millis();                  // debounce button press
   }
-} // handleButton()
+  } // handleButton()
+*/
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
   //Serial.setDebugOutput(true);        // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
-  debugOutLN(FPSTR(NIL));
+  debugOutLN();
   debugOut(F("SolarGuardn v"));
   debugOutLN(VERSION);
 
@@ -64,7 +66,7 @@ void setup() {
     delay(500);
   }
 #ifdef DEBUG
-  debugOutLN(FPSTR(NIL));
+  debugOutLN();
   debugOutLN(io.statusText());
 #endif
 
@@ -80,7 +82,7 @@ void setup() {
 #endif
   }
 #ifdef DEBUG
-  debugOutLN(FPSTR(NIL));
+  debugOutLN();
 #endif
 
 #ifdef OTA
@@ -123,12 +125,17 @@ void setup() {
   Wire.setClock(100000);
   BME = bme.begin(BMEid);
   if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
+  bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                  Adafruit_BME280::SAMPLING_X4, // temperature
+                  Adafruit_BME280::SAMPLING_X4, // pressure
+                  Adafruit_BME280::SAMPLING_X4, // humidity
+                  Adafruit_BME280::FILTER_OFF   );
 
   pinMode(LED_BUILTIN, OUTPUT);                   // enable onboard LED output
   pinMode(MPOW, OUTPUT);                          // moisture sensor power
   digitalWrite(MPOW, LOW);                        //  - initially off
   pinMode(BUTTON, INPUT);                         // flash button for calibration
-  attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
+  //attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
   controlWater(false);                            // start with water control off
 
 #ifdef TELNET
@@ -142,12 +149,12 @@ void setup() {
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
-  IOdebug->save(ESP.getResetReason());
+  IOdebug->save(WiFi.localIP().toString() + " " + ESP.getResetReason());
   debugOut(F("Ready, at "));
   debugOutLN(ttime());
-  debugOutLN(FPSTR(NIL));
+  debugOutLN();
 #endif
-  delay(5000);  // wait for NTP
+  delay(5000);  // wait for NTP to stabilize
 } // setup()
 
 template <typename T> void debugOut(const T x) {
@@ -159,6 +166,10 @@ template <typename T> void debugOut(const T x) {
 #endif
   yield();
 } // debugOut()
+
+void debugOutLN() {
+  debugOut(FPSTR(EOL));
+}
 
 template <typename T> void debugOutLN(const T x) {
   debugOut(x);
@@ -305,6 +316,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
 
 void readBME() {
   if (!BME) return;
+  bme.takeForcedMeasurement();
   temp = bme.readTemperature();                   // read Temp in C
   if (Fahrenheit) temp = temp * 1.8F + 32.0F;     // convert to Fahrenheit
   humid = bme.readHumidity();                     // read Humidity
@@ -442,7 +454,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     debugOut(F(" send favicon.ico at "));
     debugOutLN(tim);
 #endif
-    client.println(F("HTTP/1.1 200 OK"));
+    client.println(FPSTR(HTTPOK));
     client.println(F("Content-Type: image/x-icon"));
     client.print(F("Content-Length: "));
     client.println(f.size());
@@ -451,6 +463,20 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.flush();
     client.stop();
     f.close();
+    return;
+  }
+  else if (req.startsWith("GET /ROBOT")) {                  // robots.txt just in case
+#ifdef DEBUG
+    debugOut(F(" send robots.txt at "));
+    debugOutLN(tim);
+#endif
+    client.println(FPSTR(HTTPOK));
+    client.println(F("Content-Type: text/plain"));
+    client.println();
+    client.println(F("User-agent: *"));
+    client.println(F("Disallow: /"));
+    client.flush();
+    client.stop();
     return;
   }
   else if (req.startsWith("GET /CAL")) {                  // CALIBRATE will start moisture sensor calibration
@@ -478,6 +504,12 @@ void handleWWW(WiFiClient client) {                        // default request se
   dtostrf(pressure / 100.0F, 5, 2, p);
   snprintf_P(buf, sizeof(buf), WWWSTAT, VERSION, tim.c_str(), upt.c_str(), temp_l, humid_l, p, soil);
   client.println(buf);
+  if (req.startsWith("GET /CRASH")) {
+    client.println("<pre>");
+    SaveCrash.print(client);
+    client.println("</pre>");
+    SaveCrash.clear();
+  }
   client.println("</body></html>");
   client.flush();
   client.stop();
