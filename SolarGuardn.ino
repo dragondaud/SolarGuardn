@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.07 PRE-RELEASE 26-Oct-2017
+  SolarGuardn v0.8.00 PRE-RELEASE 26-Oct-2017
   by David Denney
 
   Monitors garden conditions, cycles irrigation control as needed, reports data using MQTT.
@@ -13,12 +13,15 @@
 
   Designed to run on an ESP-12E NodeMCU board with additional hardware,
   this sketch will monitor soil conditions, ambient temperature, humidity
-  and atmospheric pressure, then report changes using MQTT, to AdafruitIO.
+  and atmospheric pressure, then report changes using MQTT.
 
-  A builtin WWW server provides direct access to current data, /reset will reboot, /calibrate starts calibration.
+  Built-in WWW server:
+    / : display temperature, humidity, pressure, soil moisture
+    /reset : reboot module
+    /calibrate : start calibration
+    /crash : display any saved crash report
+
   Telnet server allows remote monitoring and debugging when serial is not practical.
-
-  Press FLASH button on NodeMCU to enter moisture sensor calibration mode, see calibration.md
 
   Board: NodeMCU 1.0, Freq: 80MHz, Flash: 4M (1M SPIFFS), Speed: 115200, Port: serial or OTA IP
 
@@ -31,18 +34,6 @@
 
 #include "config.h"
 
-/*
-  void ICACHE_RAM_ATTR handleButton() {
-  if (millis() - deBounce < 50) return;   // debounce button
-  buttonState = digitalRead(BUTTON);      // read state of flash button
-  if (buttonState == LOW) return;         // button down, do nothing
-  else {
-    startCalibrate = true;
-    deBounce = millis();                  // debounce button press
-  }
-  } // handleButton()
-*/
-
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
   //Serial.setDebugOutput(true);        // uncomment for extra debugging
@@ -53,13 +44,14 @@ void setup() {
 
   readConfig();                       // mount SPIFFS, config file not implemented yet
 
-  /* AdafruitIO */
-#ifdef DEBUG
-  debugOut(F("Connecting to Adafruit IO"));
-#endif
+  /* WiFi connect */
   WiFi.hostname(HOST);
-  io.connect();
-  while (io.status() < AIO_CONNECTED) {
+#ifdef DEBUG
+  debugOut("Connecting to ");
+  debugOut(WIFI_SSID);
+#endif
+  WiFi.begin(WIFI_SSID.c_str(), WIFI_PASS.c_str());
+  while (WiFi.status() != WL_CONNECTED) {
 #ifdef DEBUG
     debugOut(FPSTR(DOT));
 #endif
@@ -67,7 +59,6 @@ void setup() {
   }
 #ifdef DEBUG
   debugOutLN();
-  debugOutLN(io.statusText());
 #endif
 
   /* configTime sntp */
@@ -86,9 +77,9 @@ void setup() {
 #endif
 
 #ifdef OTA
-  ArduinoOTA.setHostname(HOST);
+  ArduinoOTA.setHostname(HOST.c_str());
   ArduinoOTA.setPort(OTA_PORT);
-  if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS);
+  if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS.c_str());
   ArduinoOTA.onStart([]() {
     Serial.println(F("\r\nOTA Start"));
   } );
@@ -135,7 +126,6 @@ void setup() {
   pinMode(MPOW, OUTPUT);                          // moisture sensor power
   digitalWrite(MPOW, LOW);                        //  - initially off
   pinMode(BUTTON, INPUT);                         // flash button for calibration
-  //attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
   controlWater(false);                            // start with water control off
 
 #ifdef TELNET
@@ -149,13 +139,18 @@ void setup() {
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
-  IOdebug->save(WiFi.localIP().toString() + " " + ESP.getResetReason());
+  publish("debug", WiFi.localIP().toString() + " " + ESP.getResetReason());
   debugOut(F("Ready, at "));
   debugOutLN(ttime());
   debugOutLN();
 #endif
   delay(5000);  // wait for NTP to stabilize
 } // setup()
+
+bool publish (String t, String m) {
+  String p = "{" + t + "," + m + "}";
+  return MQTTclient.publish(MQTT_TOPIC.c_str(), p.c_str());
+} // publish()
 
 template <typename T> void debugOut(const T x) {
   Serial.print(x);
@@ -189,7 +184,7 @@ void handleTelnet(void) {
 #ifdef DEBUG
       debugOut(F("\r\ntelnet connected from "));
       debugOutLN(telnetClient.remoteIP());
-      IOdebug->save("telnet " + telnetClient.remoteIP().toString());
+      publish("debug", "telnet " + telnetClient.remoteIP().toString());
       SaveCrash.print(telnetClient);
       SaveCrash.clear();
       espStats();
@@ -234,8 +229,8 @@ void espStats() {
   debugOutLN(ESP.getFreeHeap());
   debugOut(F("ESP uptime: "));
   debugOutLN(upTime());
-  debugOutLN("Moisture range: " + String(Water) + " > Soaked > " + String(Water - interval) \
-             + " > Wet > " + String(Air + interval) + " > Dry > " + String(Air));
+  debugOutLN("Moisture range: " + String(WATER) + " > Soaked > " + String(WATER - interval) \
+             + " > Wet > " + String(AIR + interval) + " > Dry > " + String(AIR));
 } // espStats()
 
 void controlWater(bool cmd) {         // control Sonoff module running ESPurna
@@ -260,11 +255,11 @@ void controlWater(bool cmd) {         // control Sonoff module running ESPurna
     if (httpCode == HTTP_CODE_OK) {             // only change pump state if successful
       if ((water) || (cmd)) wTime = millis();   // track pump time
       water = cmd;
-      if (cmd) IOwater->save("ON");
-      else IOwater->save("OFF");
+      if (cmd) publish("water", "ON");
+      else publish("water", "OFF");
     }
   } else {
-    IOdebug->save(http.errorToString(httpCode));
+    publish("debug", http.errorToString(httpCode));
     debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
   }
   http.end();
@@ -299,7 +294,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       digitalWrite(MPOW, LOW);        // turn off moisture sensor
       delay(STIME * 1.2);
       x++;
-    } while (((r < Air) || (r > Water)) && x < nREAD);  // skip invalid values
+    } while (((r < AIR) || (r > WATER)) && x < nREAD);  // skip invalid values
     s += r;
     if (VERBOSE) {                    // during calibration, output all values
       debugOut(r);
@@ -318,21 +313,24 @@ void readBME() {
   if (!BME) return;
   bme.takeForcedMeasurement();
   temp = bme.readTemperature();                   // read Temp in C
-  if (Fahrenheit) temp = temp * 1.8F + 32.0F;     // convert to Fahrenheit
+  if (FAHRENHEIT) temp = temp * 1.8F + 32.0F;     // convert to Fahrenheit
   humid = bme.readHumidity();                     // read Humidity
   pressure = round(bme.readPressure() * 0.02953); // read barometric pressure and convert to inHg
 }                                                 /*-- add configure option for hPa or inHg --*/
 
 void doMe() {                             // called every 5 seconds to handle background tasks
 #ifdef TELNET
-  handleTelnet();                          // handle telnet server
+  handleTelnet();                         // handle telnet server
   yield();                                // process background tasks
 #endif
 #ifdef OTA
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
   yield();
 #endif
-  io.run();                               // handle AdafruitIO messages
+  if (!MQTTclient.connected()) {          // reconnect MQTT if needed
+    MQTTclient.connect("TEST");
+  }
+  MQTTclient.loop();                      // handle MQTT messages
   yield();
 #ifdef WWW
   WiFiClient client = wwwServer.available(); // serve web requests
@@ -350,7 +348,7 @@ void loop() {
   soil = readMoisture(false);
 #ifdef DEBUG
   debugOut(String(temp, 2));
-  if (Fahrenheit) debugOut(F("°F, "));
+  if (FAHRENHEIT) debugOut(F("°F, "));
   else debugOut(F("°C, "));
   debugOut(String(humid, 2));
   debugOut(F("% RH, "));
@@ -358,15 +356,15 @@ void loop() {
   debugOut(F(" inHg, "));
   debugOut(soil);
 #endif
-  if (soil > (Air + interval)) {
+  if (soil > (AIR + interval)) {
 #ifdef DEBUG
-    if (soil > (Water - interval)) debugOutLN(F(" soaked."));
+    if (soil > (WATER - interval)) debugOutLN(F(" soaked."));
     else debugOutLN(F(" wet."));
 #endif
     if (water) {
-      if (soil > (Water - interval)) {
-        IOdebug->save("soaked off");
-      } else IOdebug->save("wet off");
+      if (soil > (WATER - interval)) {
+        publish("debug", "soaked off");
+      } else publish("debug", "wet off");
       controlWater(false);
     }
   } else {
@@ -379,43 +377,43 @@ void loop() {
 #ifdef DEBUG
     debugOutLN("save moisture " + String(soil));
 #endif
-    IOmoist->save(soil);                  // store soil moisture
+    publish("moist", String(soil));    // store soil moisture
     soil_l = soil;
   }
   int tt = round(temp);                   // round off temperature
   if (tt != temp_l && tt < 120) {         // if temp has changed and is valid then
 #ifdef DEBUG
     debugOut("save temperature " + String(tt));
-    if (Fahrenheit) debugOutLN(F("°F"));
+    if (FAHRENHEIT) debugOutLN(F("°F"));
     else debugOutLN(F("°C"));
 #endif
-    IOtemp->save(tt);                      // store rounded temp
+    publish("temp", String(tt));       // store rounded temp
     temp_l = tt;
   }
-  int hh = round(humid);                   // round off humidity
-  if (hh != humid_l && hh <= 100) {         // if humidity has changed and is valid then
+  int hh = round(humid);                  // round off humidity
+  if (hh != humid_l && hh <= 100) {       // if humidity has changed and is valid then
 #ifdef DEBUG
     debugOutLN("save humidity " + String(hh) + "%RH");
 #endif
-    IOhumid->save(hh);                     // store rounded humidity
+    publish("humid", String(hh));      // store rounded humidity
     humid_l = hh;
   }
   if (pressure != pressure_l && pressure <= 3000) { // if pressure has changed and is valid then
     char p[10];
-    dtostrf(pressure / 100.0F, 5, 2, p);            // convert to string with two decimal places
+    dtostrf(pressure / 100.0F, 5, 2, p);  // convert to string with two decimal places
 #ifdef DEBUG
     debugOut(F("save pressure "));
     debugOut(p);
     debugOutLN(F(" inHg"));
 #endif
-    IOpressure->save(p);                            // store inHg pressure
+    publish("pressure", String(p));    // store inHg pressure
     pressure_l = pressure;
   }
   digitalWrite(LED_BUILTIN, HIGH);        // turn off LED before sleep loop
   for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
     doMe();                               // while allowing background tasks to run every 5 seconds
-    if ((water) && ((readMoisture(false) > Air + interval) || (((millis() - wTime) / 1000) > MAXWATER))) {
-      IOdebug->save("time off");
+    if ((water) && ((readMoisture(false) > AIR + interval) || (((millis() - wTime) / 1000) > MAXWATER))) {
+      publish("debug", "time off");
       controlWater(false);
     }
 #ifdef DEBUG
@@ -441,7 +439,7 @@ void handleWWW(WiFiClient client) {                        // default request se
   String tim = ttime(), upt = upTime();
   client.flush();
 #ifdef DEBUG
-  //IOdebug->save("WWW " + client.remoteIP().toString());
+  //publish("debug", "WWW " + client.remoteIP().toString());
   debugOut(req);
   debugOut(F(" from "));
   debugOut(client.remoteIP());
@@ -531,46 +529,49 @@ void readConfig() {       // mount flash filesystem to read SPIFFS config file
     delay(500);
     ESP.restart();
   }
-}
-/*
-  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
-  else {
+  if (!SPIFFS.exists(CONFIG)) {
+    debugOutLN(F("Config file not found"));
+  } else {
     File f = SPIFFS.open(CONFIG, "r");
-  #ifdef DEBUG
+#ifdef DEBUG
     debugOut(F("config.txt: "));
     debugOut(f.size());
     debugOutLN(F(" bytes"));
-  #endif
+#endif
     while (f.available()) {
       String t = f.readStringUntil('\n');
       t.trim();
       t.replace("\"", "");
-      readConfig(t);
+      getConfig(t);
     }
     f.close();
   }
-  } // readConfig()
+} // readConfig()
 
-  void getConfig(String input) {
-  int e = input.indexOf("=") + 1;
-  if ((e == 1) || (e >= input.length())) return;
-  if (input.startsWith(F("host"))) host = input.substring(e);
-  else if (input.startsWith("TZ")) TZ = input.substring(e).toInt();
-  else if (input.startsWith("Air")) Air = input.substring(e).toInt();
-  else if (input.startsWith("Water")) Water = input.substring(e).toInt();
-  else if (input.startsWith("Fahrenheit")) Fahrenheit = input.substring(e).toInt();
-  else if (input.startsWith("WIFI_SSID")) WIFI_SSID = input.substring(e);
-  else if (input.startsWith("WIFI_PASS")) WIFI_PASS = input.substring(e);
-  #ifdef OTA
-  else if (input.startsWith("OTA_PASS")) OTA_PASS = input.substring(e);
-  #endif
-  else if (input.startsWith("IO_USERNAME")) IO_USERNAME = input.substring(e);
-  else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
-  else if (input.startsWith("onURL")) onURL = input.substring(e);
-  else if (input.startsWith("offURL")) offURL = input.substring(e);
-  } // getConfig()
+void getConfig(String i) {
+  int e = i.indexOf("=") + 1;
+  if ((e == 1) || (e >= i.length())) return;
+  if (i.startsWith(F("host"))) HOST = i.substring(e);
+  else if (i.startsWith("TZ")) TZ = i.substring(e).toInt();
+  else if (i.startsWith("AIR")) AIR = i.substring(e).toInt();
+  else if (i.startsWith("WATER")) WATER = i.substring(e).toInt();
+  else if (i.startsWith("FAHRENHEIT")) FAHRENHEIT = i.substring(e).toInt();
+  else if (i.startsWith("WIFI_SSID")) WIFI_SSID = i.substring(e);
+  else if (i.startsWith("WIFI_PASS")) WIFI_PASS = i.substring(e);
+#ifdef OTA
+  else if (i.startsWith("OTA_PASS")) OTA_PASS = i.substring(e);
+#endif
+  else if (i.startsWith("MQTT_SERV")) MQTT_SERV = i.substring(e);
+  else if (i.startsWith("MQTT_PORT")) MQTT_PORT = i.substring(e).toInt();
+  else if (i.startsWith("MQTT_TOPIC")) MQTT_TOPIC = i.substring(e);
+  else if (i.startsWith("MQTT_USER")) MQTT_USER = i.substring(e);
+  else if (i.startsWith("MQTT_PASS")) MQTT_PASS = i.substring(e);
+  else if (i.startsWith("onURL")) onURL = i.substring(e);
+  else if (i.startsWith("offURL")) offURL = i.substring(e);
+} // getConfig()
 
-  void writeConfig() {
+/*
+void writeConfig() {
   File f = SPIFFS.open(CONFIG, "w");
   int c = 0;
   if (!f) {
@@ -580,19 +581,22 @@ void readConfig() {       // mount flash filesystem to read SPIFFS config file
   debugOutLN(F("Writing config to flash..."));
   f.printf("host=%s\n", host.c_str());
   f.printf("TZ=%d\n", TZ);
-  f.printf("Air=%d\n", Air);
-  f.printf("Water=%d\n", Water);
-  f.printf("Fahrenheit=%u\n", Fahrenheit);
+  f.printf("AIR=%d\n", AIR);
+  f.printf("WATER=%d\n", WATER);
+  f.printf("FAHRENHEIT=%u\n", FAHRENHEIT);
   f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
   f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
-  #ifdef OTA
+#ifdef OTA
   f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
-  #endif
-  f.printf("IO_USERNAME=%s\n", IO_USERNAME.c_str());
-  f.printf("IO_KEY=%s\n", IO_KEY.c_str());
+#endif
+  f.printf("MQTT_SERV=%s\n", MQTT_SERV.c_str());
+  f.printf("MQTT_PORT=%d\n", MQTT_PORT);
+  f.printf("MQTT_TOPIC=%s\n", MQTT_TOPIC.c_str());
+  f.printf("MQTT_USER=%s\n", MQTT_USER.c_str());
+  f.printf("MQTT_PASS=%s\n", MQTT_PASS.c_str());
   f.printf("onURL=%s\n", onURL.c_str());
   f.printf("offURL=%s\n", offURL.c_str());
   f.close();
   debugOutLN(F("Success!"));
-  } // writeConfig()
+} // writeConfig()
 */
