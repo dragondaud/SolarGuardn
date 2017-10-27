@@ -51,7 +51,7 @@
 #include <FS.h>
 #include <pgmspace.h>               // for flash constants to save ram
 
-int Air = 220;                      // sensor value, in air
+int Air = 240;                      // sensor value, in air
 int Water = 640;                    // sensor value, in water
 int interval = (Water - Air) / 3;   // split into dry, wet, soaked
 bool Fahrenheit = true;             // display Temp in Fahrenheit

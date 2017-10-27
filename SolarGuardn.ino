@@ -373,7 +373,10 @@ void loop() {
 #ifdef DEBUG
     debugOutLN(F(" dry."));
 #endif
-    if (!water) controlWater(true);
+    if (!water) {
+      IOdebug->save("water on");
+      controlWater(true);
+    }
   }
   if (soil != soil_l) {                   // if moisture level has changed then
 #ifdef DEBUG
