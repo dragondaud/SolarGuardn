@@ -1,8 +1,11 @@
+INSTALL
+-------
+
 Install Arduino IDE from http://www.arduino.cc/en/main/software
 Install Python 2.7-latest from https://www.python.org/downloads/windows/
 Install Github from https://central.github.com/deployments/desktop/desktop/latest/win32
 
-launch Git Bash:
+Launch 'Git Bash'
 
 cd ~/Documents/Arduino/
 mkdir hardware
@@ -15,3 +18,12 @@ git fetch origin pull/3362/head:lwip2v2
 git merge lwip2v2
 cd tools
 python get.py
+
+UPDATE
+------
+
+Launch 'Git Bash'
+
+cd ~/Documents/Arduino/hardware/esp8266com/esp8266
+git fetch origin pull/3362/head:lwip2v2
+git merge lwip2v2

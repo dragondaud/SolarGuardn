@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.07 PRE-RELEASE 24-Oct-2017
+  SolarGuardn v0.7.07 PRE-RELEASE 26-Oct-2017
   by David Denney
 
   Monitors garden conditions, cycles irrigation control as needed, reports data using MQTT.
@@ -126,9 +126,9 @@ void setup() {
   BME = bme.begin(BMEid);
   if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
   bme.setSampling(Adafruit_BME280::MODE_FORCED,
-                  Adafruit_BME280::SAMPLING_X4, // temperature
-                  Adafruit_BME280::SAMPLING_X4, // pressure
-                  Adafruit_BME280::SAMPLING_X4, // humidity
+                  Adafruit_BME280::SAMPLING_X4,  // temperature
+                  Adafruit_BME280::SAMPLING_X4,  // pressure
+                  Adafruit_BME280::SAMPLING_X4,  // humidity
                   Adafruit_BME280::FILTER_OFF   );
 
   pinMode(LED_BUILTIN, OUTPUT);                   // enable onboard LED output
@@ -299,7 +299,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
       digitalWrite(MPOW, LOW);        // turn off moisture sensor
       delay(STIME * 1.2);
       x++;
-    } while (r < Air && x < 10);      // ignore up to 10 invalid values
+    } while (((r < Air) || (r > Water)) && x < nREAD);  // skip invalid values
     s += r;
     if (VERBOSE) {                    // during calibration, output all values
       debugOut(r);
