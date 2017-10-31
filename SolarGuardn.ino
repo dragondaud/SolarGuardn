@@ -36,13 +36,16 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  //Serial.setDebugOutput(true);        // uncomment for extra debugging
+  Serial.setDebugOutput(true);      // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
-  debugOutLN();
-  debugOut(F("SolarGuardn v"));
-  debugOutLN(VERSION);
+  debugOutLN(F("\033[H\033[2JSolarGuardn starting..."));     // CLS and startup banner
 
   readConfig();                       // mount SPIFFS, config file not implemented yet
+
+  if (HOST == "") {                   // default hostname "SG-000000" where 0000 is last 6 digts of MACaddr
+    String t = WiFi.macAddress();
+    HOST = "SG-" + t.substring(9,11) + t.substring(12,14) + t.substring(15,17);
+  }
 
   /* WiFi connect */
   WiFi.hostname(HOST);
@@ -112,7 +115,7 @@ void setup() {
 #endif
 #endif // WWW
 
-  Wire.begin(I2C_DAT, I2C_CLK); /** start I2C for BME280 weather sensor **/
+  Wire.begin(BDAT, BCLK); /** start I2C for BME280 weather sensor **/
   Wire.setClock(100000);
   BME = bme.begin(BMEid);
   if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
@@ -122,11 +125,15 @@ void setup() {
                   Adafruit_BME280::SAMPLING_X4,  // humidity
                   Adafruit_BME280::FILTER_OFF   );
 
-  pinMode(LED_BUILTIN, OUTPUT);                   // enable onboard LED output
-  pinMode(MPOW, OUTPUT);                          // moisture sensor power
-  digitalWrite(MPOW, LOW);                        //  - initially off
-  pinMode(BUTTON, INPUT);                         // flash button for calibration
-  controlWater(false);                            // start with water control off
+  pinMode(LED_BUILTIN, OUTPUT);   // enable onboard LED output
+  pinMode(MGND, OUTPUT);          // moisture sensor
+  digitalWrite(MGND, LOW);        // moisture sensor
+  pinMode(MPOW, OUTPUT);          // moisture sensor
+  digitalWrite(MPOW, LOW);        // moisture sensor
+  pinMode(BGND, OUTPUT);          // BME280 ground
+  digitalWrite(BGND, LOW);        // BME280 ground
+  pinMode(BPOW, OUTPUT);          // BME280 power
+  digitalWrite(BPOW, HIGH);       // BME280 always on, has builtin power saving
 
 #ifdef TELNET
 #ifdef DEBUG
@@ -136,21 +143,49 @@ void setup() {
   //telnetServer.setNoDelay(true); // drops chars if set true
 #endif // TELNET
 
+#ifdef MQTT
+  MQTTclient.setServer(MQTT_SERV.c_str(), MQTT_PORT);
+  MQTTconnect();
+#endif
+
+  controlWater(false);                            // start with water control off
+
+  long tStart = time(nullptr);    // measure delay() accuracy in seconds and reset loop DELAY
+  delay(DELAY);
+  long tEnd = time(nullptr);
+  DELAY = (DELAY / ((tEnd - tStart) * 1000)) * DELAY;
+
 #ifdef DEBUG
   SaveCrash.print();
   espStats();
-  publish("debug", WiFi.localIP().toString() + " " + ESP.getResetReason());
   debugOut(F("Ready, at "));
-  debugOutLN(ttime());
-  debugOutLN();
+  debugOut(ttime() + " (");
+  debugOut(DELAY);
+  debugOutLN(")");
 #endif
-  delay(5000);  // wait for NTP to stabilize
 } // setup()
 
+#ifdef MQTT
 bool publish (String t, String m) {
-  String p = "{" + t + "," + m + "}";
-  return MQTTclient.publish(MQTT_TOPIC.c_str(), p.c_str());
+  if (!MQTTclient.connected()) MQTTconnect();
+  return MQTTclient.publish(t.c_str(), m.c_str());
 } // publish()
+
+bool MQTTconnect () {
+  bool r = MQTTclient.connect(MQTT_TOPIC.c_str(), MQTT_USER.c_str(), MQTT_PASS.c_str());
+  if (r) {
+#ifdef DEBUG
+    debugOutLN("Connected to MQTT on " + MQTT_SERV + ":" + String(MQTT_PORT));
+    publish("debug", WiFi.localIP().toString() + " " + ESP.getResetReason());
+#endif
+  } else {
+#ifdef DEBUG
+    debugOutLN("Could not connect to " + MQTT_SERV);
+#endif
+  }
+  return r;
+}
+#endif
 
 template <typename T> void debugOut(const T x) {
   Serial.print(x);
@@ -184,7 +219,9 @@ void handleTelnet(void) {
 #ifdef DEBUG
       debugOut(F("\r\ntelnet connected from "));
       debugOutLN(telnetClient.remoteIP());
+#ifdef MQTT
       publish("debug", "telnet " + telnetClient.remoteIP().toString());
+#endif
       SaveCrash.print(telnetClient);
       SaveCrash.clear();
       espStats();
@@ -207,7 +244,9 @@ String upTime() {
 } // upTime()
 
 void espStats() {
-  debugOut(F("last reset: "));
+  debugOut(F("SolarGuardn v"));
+  debugOutLN(VERSION);
+  debugOut(F("Last reset reason: "));
   debugOutLN(ESP.getResetReason());
   debugOut(F("WiFi Hostname: "));
   debugOutLN(WiFi.hostname());
@@ -223,8 +262,14 @@ void espStats() {
   debugOutLN(ESP.getSdkVersion());
   debugOut(F("ESP sketch size: "));
   debugOutLN(ESP.getSketchSize());
-  debugOut(F("ESP free flash: "));
+  debugOut(F("ESP Flash free: "));
   debugOutLN(ESP.getFreeSketchSpace());
+  debugOut(F("ESP Flash Size: "));
+  debugOut(ESP.getFlashChipSize());
+  debugOut("/");
+  debugOutLN(ESP.getFlashChipRealSize());
+  debugOut(F("ESP Flash ChipId: "));
+  debugOutLN(ESP.getFlashChipId());
   debugOut(F("ESP free RAM: "));
   debugOutLN(ESP.getFreeHeap());
   debugOut(F("ESP uptime: "));
@@ -255,11 +300,15 @@ void controlWater(bool cmd) {         // control Sonoff module running ESPurna
     if (httpCode == HTTP_CODE_OK) {             // only change pump state if successful
       if ((water) || (cmd)) wTime = millis();   // track pump time
       water = cmd;
+#ifdef MQTT
       if (cmd) publish("water", "ON");
       else publish("water", "OFF");
+#endif
     }
   } else {
+#ifdef MQTT
     publish("debug", http.errorToString(httpCode));
+#endif
     debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
   }
   http.end();
@@ -327,11 +376,11 @@ void doMe() {                             // called every 5 seconds to handle ba
   ArduinoOTA.handle();                    // handle OTA update requests every 5 seconds
   yield();
 #endif
-  if (!MQTTclient.connected()) {          // reconnect MQTT if needed
-    MQTTclient.connect("TEST");
-  }
-  MQTTclient.loop();                      // handle MQTT messages
+#ifdef MQTT
+  if (!MQTTclient.connected()) MQTTconnect();      // reconnect MQTT if needed
+  MQTTclient.loop();                               // handle MQTT messages
   yield();
+#endif
 #ifdef WWW
   WiFiClient client = wwwServer.available(); // serve web requests
   if (client) handleWWW(client);
@@ -343,7 +392,7 @@ void doMe() {                             // called every 5 seconds to handle ba
 
 void loop() {
   doMe();
-  digitalWrite(LED_BUILTIN, LOW);   // blink LED_BUILTIN (NodeMCU LOW = ON)
+  analogWrite(LED_BUILTIN, 1);  // turn on LED to half brightness while collecting sensor input
   readBME();
   soil = readMoisture(false);
 #ifdef DEBUG
@@ -362,9 +411,11 @@ void loop() {
     else debugOutLN(F(" wet."));
 #endif
     if (water) {
+#ifdef MQTT
       if (soil > (WATER - interval)) {
         publish("debug", "soaked off");
       } else publish("debug", "wet off");
+#endif
       controlWater(false);
     }
   } else {
@@ -377,7 +428,9 @@ void loop() {
 #ifdef DEBUG
     debugOutLN("save moisture " + String(soil));
 #endif
+#ifdef MQTT
     publish("moist", String(soil));    // store soil moisture
+#endif
     soil_l = soil;
   }
   int tt = round(temp);                   // round off temperature
@@ -387,7 +440,9 @@ void loop() {
     if (FAHRENHEIT) debugOutLN(F("°F"));
     else debugOutLN(F("°C"));
 #endif
+#ifdef MQTT
     publish("temp", String(tt));       // store rounded temp
+#endif
     temp_l = tt;
   }
   int hh = round(humid);                  // round off humidity
@@ -395,7 +450,9 @@ void loop() {
 #ifdef DEBUG
     debugOutLN("save humidity " + String(hh) + "%RH");
 #endif
+#ifdef MQTT
     publish("humid", String(hh));      // store rounded humidity
+#endif
     humid_l = hh;
   }
   if (pressure != pressure_l && pressure <= 3000) { // if pressure has changed and is valid then
@@ -406,32 +463,41 @@ void loop() {
     debugOut(p);
     debugOutLN(F(" inHg"));
 #endif
-    publish("pressure", String(p));    // store inHg pressure
+#ifdef MQTT
+    publish("pressure", String(p));       // store inHg pressure
+#endif
     pressure_l = pressure;
   }
-  digitalWrite(LED_BUILTIN, HIGH);        // turn off LED before sleep loop
+  for (int i = 23; i < 1023; i++) {       // fade LED before sleep loop
+    analogWrite(LED_BUILTIN, i);
+    delay(1);
+  }
+  analogWrite(LED_BUILTIN, 0);            // disable analog output on LED
+  digitalWrite(LED_BUILTIN, HIGH);        // turn off LED
   for (int x = 0; x < 12; x++) {          // sleep 1 minute between moisture readings to save power
     doMe();                               // while allowing background tasks to run every 5 seconds
     if ((water) && ((readMoisture(false) > AIR + interval) || (((millis() - wTime) / 1000) > MAXWATER))) {
+#ifdef MQTT
       publish("debug", "time off");
+#endif
       controlWater(false);
     }
 #ifdef DEBUG
     debugOut(ttime() + " (" + ESP.getFreeHeap() + " free) \033[K\r");
 #endif
-    delay(5000);                          // delay() allows background tasks to run each invocation
+    delay(DELAY);                          // delay() allows background tasks to run each invocation
   } // for x
 } // loop()
 
 String ttime() {
   time_t now = time(nullptr);
   String t = ctime(&now);
-  t.trim();                               // formated time contains crlf
+  t.trim();                               // formated time contains \n, bug?
   return t;
 } // ttime()
 
 #ifdef WWW
-void handleWWW(WiFiClient client) {                        // default request serves STATUS page
+void handleWWW(WiFiClient client) {       // default request serves STATUS page
   if (!client.available()) return;
   char buf[1000];
   char p[10];
@@ -439,13 +505,15 @@ void handleWWW(WiFiClient client) {                        // default request se
   String tim = ttime(), upt = upTime();
   client.flush();
 #ifdef DEBUG
-  //publish("debug", "WWW " + client.remoteIP().toString());
+#ifdef MQTT
+  publish("debug", "WWW " + client.remoteIP().toString());
+#endif
   debugOut(req);
   debugOut(F(" from "));
   debugOut(client.remoteIP());
 #endif
   req.toUpperCase();
-  if (req.startsWith("GET /FAV")) {                       // send favicon.ico from data directory
+  if (req.startsWith("GET /FAV")) {             // send favicon.ico from data directory
     File f = SPIFFS.open("/favicon.ico", "r");
     if (!f) return;
 #ifdef DEBUG
@@ -463,7 +531,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     f.close();
     return;
   }
-  else if (req.startsWith("GET /ROBOT")) {                  // robots.txt just in case
+  else if (req.startsWith("GET /ROBOT")) {      // robots.txt just in case
 #ifdef DEBUG
     debugOut(F(" send robots.txt at "));
     debugOutLN(tim);
@@ -477,7 +545,7 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.stop();
     return;
   }
-  else if (req.startsWith("GET /CAL")) {                  // CALIBRATE will start moisture sensor calibration
+  else if (req.startsWith("GET /CAL")) {        // CALIBRATE will start moisture sensor calibration
 #ifdef DEBUG
     debugOut(F(" start calibration at "));
     debugOutLN(tim);
@@ -489,14 +557,14 @@ void handleWWW(WiFiClient client) {                        // default request se
     startCalibrate = true;
     return;
   }
-  else if (req.startsWith("GET /RESET")) {                // RESET will restart ESP
+  else if (req.startsWith("GET /RESET")) {        // RESET will restart ESP
     client.println(F("HTTP/1.1 204 No Content"));
     client.println();
     client.flush();
     client.stop();
     debugOut(F(" restart ESP at "));
     debugOutLN(tim);
-    delay(500);                                           // delay to close connection before reset
+    delay(500);                                   // delay to close connection before reset
     ESP.restart();
   }
   dtostrf(pressure / 100.0F, 5, 2, p);

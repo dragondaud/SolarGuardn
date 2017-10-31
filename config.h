@@ -1,6 +1,7 @@
 /* SolarGuardn config.h */
 
 #define VERSION     "0.8.00"
+#define EIGHT
 
 #define DEBUG
 #define TELNET
@@ -42,25 +43,21 @@ String offURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0";
 #define CONFIG  "/config.txt"     // SPIFFS config file
 
 /* includes */
-#include <ESP8266WiFi.h>          // Using 2.4.0-rc1 ESP8266 Arduino core from:
-#include <ESP8266mDNS.h>          // ** https://github.com/esp8266/Arduino
-#include <ESP8266HTTPClient.h>    // **
-#include <WiFiUdp.h>              // ** provides each of these libraries
-#ifdef OTA                        // **
-#include <ArduinoOTA.h>           // ** Optional Over-the-Air updates
-#endif                            // ******************************************
-#include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
-#include <Adafruit_BME280.h>
-#include <PubSubClient.h>
-#include "EspSaveCrash.h"         // https://github.com/krzychb/EspSaveCrash
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <time.h>
 #include <Math.h>
 #include <FS.h>
-#include <pgmspace.h>               // for flash constants to save ram
+#include "EspSaveCrash.h"         // https://github.com/krzychb/EspSaveCrash
+#include <pgmspace.h>             // for flash constants to save ram
 
-int interval = (WATER - AIR) / 3;   // split into dry, wet, soaked
+#ifdef OTA
+#include <ArduinoOTA.h>           // Over-the-Air updates
+#endif
 
 /* BME280 config **/
+#include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
+#include <Adafruit_BME280.h>
 #include <Wire.h>
 #define BMEid 0x76                  // BME280 I2C id, default 0x77, alt is 0x76
 Adafruit_BME280 bme;                // using I2C comms
@@ -68,6 +65,7 @@ bool BME = false;                   // is BME sensor present
 
 /* MQTT */
 #ifdef MQTT
+#include <PubSubClient.h>
 WiFiClient wifiClient;
 PubSubClient MQTTclient(wifiClient);
 #endif
@@ -84,26 +82,27 @@ WiFiClient  telnetClient;
 #endif
 
 /** pin defs **/
-#define MOIST     A0    // analog input from soil moisture sensor
-#define MPOW      D2    // power output to soil moisture sensor
-#define BUTTON    D3    // flash button interrupt
-#define I2C_CLK   D5    // I2C clock (SCK)
-#define I2C_DAT   D6    // I2C data (SDI)
+#define MOIST A0    // moisture sensor analog input
+#define MGND  5     // moisture sensor ground
+#define MPOW  4     // moisture sensor power
+#define BPOW  2     // BME280 power
+#define BCLK  14    // BME280 I2C SCL (clock)
+#define BDAT  12    // BME280 I2C SDA (data)
+#define BGND  13    // BME280 ground
 
 /** initialize vars **/
-
-int soil = 0, soil_l = 0;
+int DELAY = 5000;
+int soil = 0, soil_l = 1023;
 float temp = 0, humid = 0;
 int temp_l = 0, humid_l = 0;
 int relay = 0, water = 0;
 int pressure = 0, pressure_l = 0;
 int startCalibrate = 0;
 long deBounce = 0, wTime = 0;
-
 volatile int buttonState = HIGH;
+int interval = (WATER - AIR) / 3;   // split into dry, wet, soaked
 
 /** FLASH constants, to save on RAM **/
-
 static const PROGMEM char DOT[] = ".";
 static const PROGMEM char COMMA[] = ", ";
 static const PROGMEM char EOL[] = "\033[K\r\n";
