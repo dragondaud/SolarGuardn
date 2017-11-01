@@ -1,5 +1,5 @@
 /*
-  SolarGuardn v0.7.07 PRE-RELEASE 26-Oct-2017
+  SolarGuardn v0.7.08 PRE-RELEASE 01-Nov-2017
   by David Denney
 
   Monitors garden conditions, cycles irrigation control as needed, reports data using MQTT.

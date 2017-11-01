@@ -1,6 +1,6 @@
 /* SolarGuardn config.h */
 
-#define VERSION     "0.7.07"
+#define VERSION     "0.7.08"
 
 #define SAVE_CRASH_SPACE_SIZE 0x1000  // FLASH space reserved to store crash data
 
@@ -73,8 +73,8 @@ AdafruitIO_Feed *IOrelay =    io.feed("relay");       // ext relay contact
 AdafruitIO_Feed *IOdebug =    io.feed("debug");       // debugging messages
 AdafruitIO_Feed *IOfeed =     io.feed("feed");        // unused
 
-#ifdef WWW
 /** Web Server **/
+#ifdef WWW
 WiFiServer wwwServer(80);
 #endif
 
@@ -92,19 +92,16 @@ WiFiClient  telnetClient;
 #define I2C_DAT   D6    // I2C data (SDI)
 
 /** initialize vars **/
-
-int soil = 0, soil_l = 0;
+int soil = 0, soil_l = 1023;
 float temp = 0, humid = 0;
 int temp_l = 0, humid_l = 0;
 int relay = 0, water = 0;
 int pressure = 0, pressure_l = 0;
 int startCalibrate = 0;
 long deBounce = 0, wTime = 0;
-
 volatile int buttonState = HIGH;
 
 /** FLASH constants, to save on RAM **/
-
 static const PROGMEM char DOT[] = ".";
 static const PROGMEM char COMMA[] = ", ";
 static const PROGMEM char EOL[] = "\033[K\r\n";
