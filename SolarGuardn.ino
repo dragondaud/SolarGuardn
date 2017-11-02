@@ -167,8 +167,9 @@ void setup() {
 
 #ifdef MQTT
 bool publish (String t, String m) {
+  String topic = "/" + MQTT_TOPIC + "/" + t + "/";
   if (!MQTTclient.connected()) MQTTconnect();
-  return MQTTclient.publish(t.c_str(), m.c_str());
+  return MQTTclient.publish(topic.c_str(), m.c_str());
 } // publish()
 
 bool MQTTconnect () {
