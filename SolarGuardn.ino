@@ -31,18 +31,6 @@
 
 #include "config.h"
 
-/*
-  void ICACHE_RAM_ATTR handleButton() {
-  if (millis() - deBounce < 50) return;   // debounce button
-  buttonState = digitalRead(BUTTON);      // read state of flash button
-  if (buttonState == LOW) return;         // button down, do nothing
-  else {
-    startCalibrate = true;
-    deBounce = millis();                  // debounce button press
-  }
-  } // handleButton()
-*/
-
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
   //Serial.setDebugOutput(true);        // uncomment for extra debugging
@@ -135,7 +123,6 @@ void setup() {
   pinMode(MPOW, OUTPUT);                          // moisture sensor power
   digitalWrite(MPOW, LOW);                        //  - initially off
   pinMode(BUTTON, INPUT);                         // flash button for calibration
-  //attachInterrupt(BUTTON, handleButton, CHANGE);  // handle button by interrupt each press
   controlWater(false);                            // start with water control off
 
 #ifdef TELNET
@@ -451,6 +438,7 @@ void handleWWW(WiFiClient client) {                        // default request se
 #endif
   req.toUpperCase();
   if (req.startsWith("GET /FAV")) {                       // send favicon.ico from data directory
+/*
     File f = SPIFFS.open("/favicon.ico", "r");
     if (!f) return;
 #ifdef DEBUG
@@ -463,9 +451,9 @@ void handleWWW(WiFiClient client) {                        // default request se
     client.println(f.size());
     client.println();
     client.write(f);  // ESP8266 Arduino 2.4.0 library automatically buffers file by just passing handle
-    client.flush();
+    client.flush();*/
     client.stop();
-    f.close();
+    //f.close();
     return;
   }
   else if (req.startsWith("GET /ROBOT")) {                  // robots.txt just in case
@@ -535,67 +523,3 @@ void readConfig() {       // mount flash filesystem to read SPIFFS config file
     ESP.restart();
   }
 }
-/*
-  if (!SPIFFS.exists(CONFIG)) debugOutLN(F("Config file not found"));
-  else {
-    File f = SPIFFS.open(CONFIG, "r");
-  #ifdef DEBUG
-    debugOut(F("config.txt: "));
-    debugOut(f.size());
-    debugOutLN(F(" bytes"));
-  #endif
-    while (f.available()) {
-      String t = f.readStringUntil('\n');
-      t.trim();
-      t.replace("\"", "");
-      readConfig(t);
-    }
-    f.close();
-  }
-  } // readConfig()
-
-  void getConfig(String input) {
-  int e = input.indexOf("=") + 1;
-  if ((e == 1) || (e >= input.length())) return;
-  if (input.startsWith(F("host"))) host = input.substring(e);
-  else if (input.startsWith("TZ")) TZ = input.substring(e).toInt();
-  else if (input.startsWith("Air")) Air = input.substring(e).toInt();
-  else if (input.startsWith("Water")) Water = input.substring(e).toInt();
-  else if (input.startsWith("Fahrenheit")) Fahrenheit = input.substring(e).toInt();
-  else if (input.startsWith("WIFI_SSID")) WIFI_SSID = input.substring(e);
-  else if (input.startsWith("WIFI_PASS")) WIFI_PASS = input.substring(e);
-  #ifdef OTA
-  else if (input.startsWith("OTA_PASS")) OTA_PASS = input.substring(e);
-  #endif
-  else if (input.startsWith("IO_USERNAME")) IO_USERNAME = input.substring(e);
-  else if (input.startsWith("IO_KEY")) IO_KEY = input.substring(e);
-  else if (input.startsWith("onURL")) onURL = input.substring(e);
-  else if (input.startsWith("offURL")) offURL = input.substring(e);
-  } // getConfig()
-
-  void writeConfig() {
-  File f = SPIFFS.open(CONFIG, "w");
-  int c = 0;
-  if (!f) {
-    debugOutLN(F("Config write failed."));
-    return;
-  }
-  debugOutLN(F("Writing config to flash..."));
-  f.printf("host=%s\n", host.c_str());
-  f.printf("TZ=%d\n", TZ);
-  f.printf("Air=%d\n", Air);
-  f.printf("Water=%d\n", Water);
-  f.printf("Fahrenheit=%u\n", Fahrenheit);
-  f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
-  f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
-  #ifdef OTA
-  f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
-  #endif
-  f.printf("IO_USERNAME=%s\n", IO_USERNAME.c_str());
-  f.printf("IO_KEY=%s\n", IO_KEY.c_str());
-  f.printf("onURL=%s\n", onURL.c_str());
-  f.printf("offURL=%s\n", offURL.c_str());
-  f.close();
-  debugOutLN(F("Success!"));
-  } // writeConfig()
-*/
