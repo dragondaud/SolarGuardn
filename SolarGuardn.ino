@@ -36,7 +36,7 @@
 
 void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
-  Serial.setDebugOutput(true);      // uncomment for extra debugging
+  //Serial.setDebugOutput(true);      // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
   debugOutLN(F("\033[H\033[2JSolarGuardn starting..."));     // CLS and startup banner
 
@@ -44,7 +44,7 @@ void setup() {
 
   if (HOST == "") {                   // default hostname "SG-000000" where 0000 is last 6 digts of MACaddr
     String t = WiFi.macAddress();
-    HOST = "SG-" + t.substring(9,11) + t.substring(12,14) + t.substring(15,17);
+    HOST = "SG-" + t.substring(9, 11) + t.substring(12, 14) + t.substring(15, 17);
   }
 
   /* WiFi connect */
@@ -173,7 +173,8 @@ bool publish (String t, String m) {
 } // publish()
 
 bool MQTTconnect () {
-  bool r = MQTTclient.connect(MQTT_TOPIC.c_str(), MQTT_USER.c_str(), MQTT_PASS.c_str());
+  //bool r = MQTTclient.connect(MQTT_TOPIC.c_str(), MQTT_USER.c_str(), MQTT_PASS.c_str());
+  bool r = MQTTclient.connect(MQTT_TOPIC.c_str());
   if (r) {
 #ifdef DEBUG
     debugOutLN("Connected to MQTT on " + MQTT_SERV + ":" + String(MQTT_PORT));
@@ -266,8 +267,6 @@ void espStats() {
   debugOut(F("ESP Flash free: "));
   debugOutLN(ESP.getFreeSketchSpace());
   debugOut(F("ESP Flash Size: "));
-  debugOut(ESP.getFlashChipSize());
-  debugOut("/");
   debugOutLN(ESP.getFlashChipRealSize());
   debugOut(F("ESP Flash ChipId: "));
   debugOutLN(ESP.getFlashChipId());
@@ -640,7 +639,7 @@ void getConfig(String i) {
 } // getConfig()
 
 /*
-void writeConfig() {
+  void writeConfig() {
   File f = SPIFFS.open(CONFIG, "w");
   int c = 0;
   if (!f) {
@@ -655,9 +654,9 @@ void writeConfig() {
   f.printf("FAHRENHEIT=%u\n", FAHRENHEIT);
   f.printf("WIFI_SSID=%s\n", WIFI_SSID.c_str());
   f.printf("WIFI_PASS=%s\n", WIFI_PASS.c_str());
-#ifdef OTA
+  #ifdef OTA
   f.printf("OTA_PASS=%s\n", OTA_PASS.c_str());
-#endif
+  #endif
   f.printf("MQTT_SERV=%s\n", MQTT_SERV.c_str());
   f.printf("MQTT_PORT=%d\n", MQTT_PORT);
   f.printf("MQTT_TOPIC=%s\n", MQTT_TOPIC.c_str());
@@ -667,5 +666,5 @@ void writeConfig() {
   f.printf("offURL=%s\n", offURL.c_str());
   f.close();
   debugOutLN(F("Success!"));
-} // writeConfig()
+  } // writeConfig()
 */
