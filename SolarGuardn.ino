@@ -38,6 +38,7 @@ void setup() {
   Serial.begin(115200);               // Initialize Serial at 115200bps, to match bootloader
   //Serial.setDebugOutput(true);      // uncomment for extra debugging
   while (!Serial);                    // wait for Serial to become available
+  delay(100);
   debugOutLN(F("\033[H\033[2JSolarGuardn starting..."));     // CLS and startup banner
 
   readConfig();                       // mount SPIFFS, config file not implemented yet
@@ -115,25 +116,30 @@ void setup() {
 #endif
 #endif // WWW
 
-  Wire.begin(BDAT, BCLK); /** start I2C for BME280 weather sensor **/
+  pinMode(LED_BUILTIN, OUTPUT);   // enable onboard LED output
+  pinMode(MGND, OUTPUT);          // moisture sensor ground
+  digitalWrite(MGND, LOW);        // moisture sensor ground
+  pinMode(MPOW, OUTPUT);          // moisture sensor power
+  digitalWrite(MPOW, LOW);        // moisture sensor power
+  pinMode(BGND, OUTPUT);          // weather ground output
+  digitalWrite(BGND, LOW);        // weather ground low
+  pinMode(BPOW, OUTPUT);          // weather power output
+  digitalWrite(BPOW, HIGH);       // weather power always on, builtin power saving
+
+  Wire.begin(BDAT, BCLK);         // start I2C for weather sensor
   Wire.setClock(100000);
+#ifdef BME
   BME = bme.begin(BMEid);
-  if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
   bme.setSampling(Adafruit_BME280::MODE_FORCED,
                   Adafruit_BME280::SAMPLING_X4,  // temperature
                   Adafruit_BME280::SAMPLING_X4,  // pressure
                   Adafruit_BME280::SAMPLING_X4,  // humidity
                   Adafruit_BME280::FILTER_OFF   );
-
-  pinMode(LED_BUILTIN, OUTPUT);   // enable onboard LED output
-  pinMode(MGND, OUTPUT);          // moisture sensor
-  digitalWrite(MGND, LOW);        // moisture sensor
-  pinMode(MPOW, OUTPUT);          // moisture sensor
-  digitalWrite(MPOW, LOW);        // moisture sensor
-  pinMode(BGND, OUTPUT);          // BME280 ground
-  digitalWrite(BGND, LOW);        // BME280 ground
-  pinMode(BPOW, OUTPUT);          // BME280 power
-  digitalWrite(BPOW, HIGH);       // BME280 always on, has builtin power saving
+  if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
+#else
+  hdc.begin(0x40);
+  BME = true;
+#endif
 
 #ifdef TELNET
 #ifdef DEBUG
@@ -360,11 +366,19 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
 
 void readBME() {
   if (!BME) return;
+#ifdef BME
   bme.takeForcedMeasurement();
   temp = bme.readTemperature();                   // read Temp in C
+#else
+  temp = hdc.readTemperature();                   // read Temp in C
+#endif
   if (FAHRENHEIT) temp = temp * 1.8F + 32.0F;     // convert to Fahrenheit
+#ifdef BME
   humid = bme.readHumidity();                     // read Humidity
   pressure = round(bme.readPressure() * 0.02953); // read barometric pressure and convert to inHg
+#else
+  humid = hdc.readHumidity();                     // read Humidity
+#endif
 }                                                 /*-- add configure option for hPa or inHg --*/
 
 void doMe() {                             // called every 5 seconds to handle background tasks

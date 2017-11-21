@@ -6,9 +6,11 @@
 #define DEBUG
 #define TELNET
 #define TELNET_PORT 23
-//#define MQTT
+#define MQTT
 #define WWW
 #define OTA
+//#define BME
+#define HDC
 
 /** BEGIN USER CONFIG **/
 #define USERCONFIG              // include local user config, ignored by git, instead of defaults
@@ -49,19 +51,27 @@ String offURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0";
 #include <pgmspace.h>               // for flash constants to save ram
 
 #include "EspSaveCrash.h"             // https://github.com/krzychb/EspSaveCrash
+#ifdef SAVE_CRASH_SPACE_SIZE
+#undef SAVE_CRASH_SPACE_SIZE
+#endif
 #define SAVE_CRASH_SPACE_SIZE 0x1000  // FLASH space reserved to store crash data
 
 #ifdef OTA
 #include <ArduinoOTA.h>             // Over-the-Air updates
 #endif
 
-/* BME280 config **/
+#ifdef BME  /* BME280 config **/
 #include <Adafruit_Sensor.h>        // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
 #include <Adafruit_BME280.h>
 #include <Wire.h>
 #define BMEid 0x76                  // BME280 I2C id, default 0x77, alt is 0x76
 Adafruit_BME280 bme;                // using I2C comms
-bool BME = false;                   // is BME sensor present
+#else /* HDC1080 */
+#include <Wire.h>
+#include "ClosedCube_HDC1080.h"
+ClosedCube_HDC1080 hdc;
+#endif
+bool BME = false;                   // is sensor present
 
 /* MQTT */
 #ifdef MQTT
@@ -85,10 +95,18 @@ WiFiClient  telnetClient;
 #define MOIST A0    // moisture sensor analog input
 #define MPOW  5     // D1, moisture sensor power
 #define MGND  4     // D2, moisture sensor ground
+
+#ifdef BME
 #define BCLK  2     // D4, BME280 I2C SCL (clock)
 #define BDAT  14    // D5, BME280 I2C SDA (data)
 #define BGND  12    // D6, BME280 ground
 #define BPOW  13    // D7, BME280 power
+#else
+#define BCLK  D4    // HDC1080 I2C SCL (clock)
+#define BDAT  D5    // HDC1080 I2C SDA (data)
+#define BPOW  D6    // HDC1080 power
+#define BGND  D7    // HDC1080 ground
+#endif
 
 /** initialize vars **/
 int DELAY = 5000;
