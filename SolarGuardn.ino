@@ -173,14 +173,13 @@ void setup() {
 
 #ifdef MQTT
 bool publish (String t, String m) {
-  String topic = "/" + MQTT_TOPIC + "/" + t + "/";
+  String topic = MQTT_TOPIC + "/" + t;
   if (!MQTTclient.connected()) MQTTconnect();
   return MQTTclient.publish(topic.c_str(), m.c_str());
 } // publish()
 
 bool MQTTconnect () {
-  //bool r = MQTTclient.connect(MQTT_TOPIC.c_str(), MQTT_USER.c_str(), MQTT_PASS.c_str());
-  bool r = MQTTclient.connect(MQTT_TOPIC.c_str());
+  bool r = MQTTclient.connect(HOST.c_str(), MQTT_USER.c_str(), MQTT_PASS.c_str());
   if (r) {
 #ifdef DEBUG
     debugOutLN("Connected to MQTT on " + MQTT_SERV + ":" + String(MQTT_PORT));
@@ -285,6 +284,7 @@ void espStats() {
 } // espStats()
 
 void controlWater(bool cmd) {         // control Sonoff module running ESPurna
+#ifdef WATERCON
   HTTPClient http;
   if (cmd) {                          // true == turn on pump
     if ((wTime) && (((millis() - wTime) / 1000) < MINWAIT)) return; // wait before turning pump back on
@@ -318,6 +318,7 @@ void controlWater(bool cmd) {         // control Sonoff module running ESPurna
     debugOutLN(" [HTTP] GET failed: " + http.errorToString(httpCode));
   }
   http.end();
+#endif
 }
 
 void calibrate() {

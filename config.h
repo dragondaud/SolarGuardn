@@ -9,6 +9,7 @@
 #define MQTT
 #define WWW
 #define OTA
+//#define WATERCON
 //#define BME
 #define HDC
 
