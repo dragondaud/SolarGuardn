@@ -27,7 +27,7 @@
 #define USERCONFIG
 
 #ifdef USERCONFIG
-#include userconfig.h
+#include "userconfig.h"
 #else
 #define WIFI_SSID "SSID"
 #define WIFI_PASS "PASS"
