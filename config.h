@@ -10,8 +10,8 @@
 #define WWW
 #define OTA
 //#define WATERCON
-//#define BME
-#define HDC
+#define BME
+//#define HDC
 
 /** BEGIN USER CONFIG **/
 #define USERCONFIG              // include local user config, ignored by git, instead of defaults
@@ -72,7 +72,7 @@ Adafruit_BME280 bme;                // using I2C comms
 #include "ClosedCube_HDC1080.h"
 ClosedCube_HDC1080 hdc;
 #endif
-bool BME = false;                   // is sensor present
+bool isBME = false;                   // is sensor present
 
 /* MQTT */
 #ifdef MQTT
@@ -98,10 +98,10 @@ WiFiClient  telnetClient;
 #define MGND  4     // D2, moisture sensor ground
 
 #ifdef BME
-#define BCLK  2     // D4, BME280 I2C SCL (clock)
-#define BDAT  14    // D5, BME280 I2C SDA (data)
-#define BGND  12    // D6, BME280 ground
-#define BPOW  13    // D7, BME280 power
+#define BCLK  D6    // BME280 I2C SCL (clock)
+#define BDAT  D7    // BME280 I2C SDA (data)
+#define BGND  D5    // BME280 ground
+#define BPOW  D4    // BME280 power
 #else
 #define BCLK  D4    // HDC1080 I2C SCL (clock)
 #define BDAT  D5    // HDC1080 I2C SDA (data)

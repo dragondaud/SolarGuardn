@@ -129,16 +129,16 @@ void setup() {
   Wire.begin(BDAT, BCLK);         // start I2C for weather sensor
   Wire.setClock(100000);
 #ifdef BME
-  BME = bme.begin(BMEid);
+  isBME = bme.begin(BMEid);
   bme.setSampling(Adafruit_BME280::MODE_FORCED,
                   Adafruit_BME280::SAMPLING_X4,  // temperature
-                  Adafruit_BME280::SAMPLING_X4,  // pressure
+                  Adafruit_BME280::SAMPLING_X1,  // pressure
                   Adafruit_BME280::SAMPLING_X4,  // humidity
                   Adafruit_BME280::FILTER_OFF   );
-  if (!BME) debugOutLN(F("Could not find a valid BME280 sensor"));
+  if (!isBME) debugOutLN(F("Could not find a valid BME280 sensor"));
 #else
   hdc.begin(0x40);
-  BME = true;
+  isBME = true;
 #endif
 
 #ifdef TELNET
@@ -366,7 +366,7 @@ int readMoisture(bool VERBOSE) {      // analog input smoothing
 } // readMoisture()
 
 void readBME() {
-  if (!BME) return;
+  if (!isBME) return;
 #ifdef BME
   bme.takeForcedMeasurement();
   temp = bme.readTemperature();                   // read Temp in C
