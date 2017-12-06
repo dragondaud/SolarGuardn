@@ -1,8 +1,19 @@
 /*
-   SolarGuardn - TankGuard v0.8.00 PRE-RELEASE 04-Dec-2017
+   SolarGuardn - TankGuard v0.8.00 PRE-RELEASE 06-Dec-2017
    by David Denney <dragondaud@gmail.com>
 
    TankGuard monitors water level in tank and reports data using MQTT.
+
+   Connect HC-SR04 VCC to 5V, GND to GND, ECHO to D1 (in), TRIG to D2 (out)
+
+   Accepts the following one character commands from serial:
+     c : clear crash information
+     e : attempt to read through a pointer to no object
+     0 : attempt to divide by zero
+     r : restart esp
+
+   Configures NTP and sets timezone automatically from geoIP location
+   GeoIP location can be overridden by setting location string to postal code.
 
    This code is offered "as is" with no warranty, expressed or implied, for any purpose,
    and is released to the public domain, while all libraries retain their respective licenses.
@@ -37,22 +48,22 @@
 #define MQTT_USER ""
 #define MQTT_PASS ""
 #define BETWEEN 60000             // delay between readings in loop()
+String location;                 // set to postal code or region name to bypass geoIP lookup
 #endif
 
-#define POW D4
-#define GND D5
-#define SCL D6
-#define SDA D7
+#define POW D4    // BME280 power
+#define GND D5    // BME280 ground
+#define SCL D6    // BME280 I2C clock
+#define SDA D7    // BME280 I2C data
 
-#define TRIG D2
-#define ECHO D1
+#define TRIG D2   // HC-SR04 trig
+#define ECHO D1   // HC-SR04 echo
 
 WiFiClient    wifiClient;
 PubSubClient  MQTTclient(wifiClient);
 
 const char* UserAgent = "SolarGuardn/1.0 (Arduino ESP8266)";
 
-String location;                 // set to postal code or region name to bypass geoIP lookup
 
 String HOST;
 String PUB_IP;
@@ -267,7 +278,7 @@ int getDist() {
     }
     delay(20);
   }
-  if (!c==0) return round(r / c);
+  if (!c == 0) return round(r / c);
   else return -1;
 } // getDist
 
