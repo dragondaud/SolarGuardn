@@ -64,7 +64,6 @@ PubSubClient  MQTTclient(wifiClient);
 
 const char* UserAgent = "SolarGuardn/1.0 (Arduino ESP8266)";
 
-
 String HOST;
 String PUB_IP;
 
@@ -95,7 +94,7 @@ void setup() {
   Serial.begin(115200);
   //Serial.setDebugOutput(true);
   while (!Serial);
-  Serial.flush();
+  flushIn(Serial);
   delay(100);
   Serial.println();
   Serial.print(F("setup: WiFi connecting to "));
@@ -228,9 +227,17 @@ void loop() {
   digitalWrite(BUILTIN_LED, HIGH);
 } // loop
 
+void flushIn(Stream &s) {
+  while (s.available()) {
+    s.read();
+    yield();
+  }
+} // flushIn
+
 void checkSer(void) {
   if (Serial.available() > 0) {
     char inChar = Serial.read();
+    flushIn(Serial);
     switch (inChar) {
       case '0':
         Serial.println(F("\nAttempting to divide by zero ..."));
@@ -263,7 +270,7 @@ void checkSer(void) {
         break;
     }
   }
-}
+} // checkSer
 
 int getDist() {
   int r = 0, c = 0;
@@ -452,7 +459,7 @@ String upTime(const time_t now) {
 } // upTime()
 
 bool mqttConnect() {
-  if (MQTTclient.connect(MQTT_TOPIC, MQTT_USER, MQTT_PASS)) {
+  if (MQTTclient.connect(HOST.c_str(), MQTT_USER, MQTT_PASS)) {
     time_t now = time(nullptr);
     Serial.print("MQTT connected to ");
     Serial.println(String(MQTT_SERV) + ":" + String(MQTT_PORT));
@@ -473,5 +480,5 @@ bool mqttPublish(String topic, String data) {
   if (!MQTTclient.connected()) mqttConnect();
   int r = MQTTclient.publish((String(MQTT_TOPIC) + "/" + HOST + "/" + topic).c_str(), data.c_str());
   if (!r) Serial.println("MQTT error: " + String(r));
-}
+} // mqttPublish
 
