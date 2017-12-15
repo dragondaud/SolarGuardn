@@ -85,10 +85,12 @@ void setup() {
   ArduinoOTA.setPort(OTA_PORT);
   if (OTA_PASS) ArduinoOTA.setPassword(OTA_PASS.c_str());
   ArduinoOTA.onStart([]() {
+    SPIFFS.end();
     Serial.println(F("\r\nOTA Start"));
   } );
   ArduinoOTA.onEnd([]() {
     Serial.println(F("\r\nOTA End"));
+    SPIFFS.begin();
   } );
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.print("OTA Progress: " + String((progress / (total / 100))) + " \r");

@@ -27,6 +27,7 @@
 
 #include <ESP8266WiFi.h>          // Arduino IDE ESP8266 from https://github.com/esp8266/Arduino
 #include <ESP8266HTTPClient.h>    // included
+#include <ESP8266mDNS.h>          // included
 #include <ArduinoOTA.h>           // included
 #include <time.h>                 // included
 #include <Wire.h>                 // included
@@ -49,6 +50,7 @@
 #define MQTT_PASS ""
 #define BETWEEN 60000             // delay between readings in loop()
 String location;                 // set to postal code or region name to bypass geoIP lookup
+String HOST = "";
 #endif
 
 #define POW D4    // BME280 power
@@ -64,7 +66,6 @@ PubSubClient  MQTTclient(wifiClient);
 
 const char* UserAgent = "SolarGuardn/1.0 (Arduino ESP8266)";
 
-String HOST;
 String PUB_IP;
 
 // openssl s_client -connect maps.googleapis.com:443 | openssl x509 -fingerprint -noout
@@ -100,12 +101,16 @@ void setup() {
   Serial.print(F("setup: WiFi connecting to "));
   Serial.print(WIFI_SSID);
   Serial.print(F("..."));
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  if (HOST != "") WiFi.hostname(HOST);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(F("."));
     delay(500);
   }
   Serial.println(F(" OK"));
+  MDNS.begin(HOST.c_str());
 
   if (location == "") {
     location = getIPlocation();
@@ -422,11 +427,11 @@ int getTimeZone(time_t now, String loc, const char* key) { // using google maps 
   return tz;
 } // getTimeZone
 
-void setNTP () {
+void setNTP() {
   int TZ = getTimeZone(time(nullptr), location, gMapsKey);
   Serial.print(F("setNTP: configure NTP ..."));
-  configTime((TZ * 3600), 0, WiFi.gatewayIP().toString().c_str(), "pool.ntp.org", "time.nist.gov");
-  while (!time(nullptr)) {
+  configTime((TZ * 3600), 0, "pool.ntp.org", "time.nist.gov");
+  while (time(nullptr) < (30 * 365 * 24 * 60 * 60)) {         // wait for time to advance to this century
     delay(1000);
     Serial.print(F("."));
   }
@@ -477,7 +482,10 @@ bool mqttConnect() {
 } // mqttConnect
 
 bool mqttPublish(String topic, String data) {
-  if (!MQTTclient.connected()) mqttConnect();
+  if (!MQTTclient.connected()) {
+    Serial.println();
+    mqttConnect();
+  }
   int r = MQTTclient.publish((String(MQTT_TOPIC) + "/" + HOST + "/" + topic).c_str(), data.c_str());
   if (!r) Serial.println("MQTT error: " + String(r));
 } // mqttPublish
