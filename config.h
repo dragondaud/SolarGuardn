@@ -1,77 +1,85 @@
 /* SolarGuardn config.h */
 
-#define VERSION     "0.7.08"
+#define VERSION     "0.8.00"
+#define EIGHT
 
-#define SAVE_CRASH_SPACE_SIZE 0x1000  // FLASH space reserved to store crash data
+#define DEBUG
+#define TELNET
+#define TELNET_PORT 23
+#define MQTT
+#define WWW
+#define OTA
+//#define WATERCON
+#define BME
+//#define HDC
 
 /** BEGIN USER CONFIG **/
 #define USERCONFIG              // include local user config, ignored by git, instead of defaults
 #ifdef USERCONFIG
-#include "userconfig.h"         // copy following defines to userconfig.h and edit as needed
+#include "userconfig.h"         // copy the following initializers to userconfig.h and edit as needed
 #else
-#define HOST "SolarGuardn"
-#define DEBUG                   // Output messages on serial (and telnet if enabled)
-#define TELNET                  // enable telnet server to view debug messages
-#define TELNET_PORT 23          // telnet standard port
-#define OTA                     // enable OTA updates
-#define OTA_PORT 8266           // default port 8266
-#define OTA_PASS ""             // set OTA update password or blank for none
-#define WWW                     // enable WWW server status page
-#define STIME 120               // time delay between sampling analog input in milliseconds
-#define nREAD 3                 // number of samples to average
-#define MAXWATER 60             // Max time, in seconds, to water
-#define MINWAIT 300             // Wait at least 5 minutes before watering again
-#define WIFI_SSID "SSID"        // set WiFi and AIO here or in USERCONFIG
-#define WIFI_PASS "PASSWORD"    // still working on runtime config
-#define IO_USERNAME "AIO-user"  // https://io.adafruit.com/
-#define IO_KEY "AIO-key"
-#define TZ -6                   // timezone offset from GMT
-#define onURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1"
-#define offURL "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0"
+String HOST = "SolarGuardn";    // hostname for DHCP
+int TZ = -6;                    // time zone offset, in hours
+uint16_t OTA_PORT = 8266;       // default port 8266
+String OTA_PASS = "";           // set OTA update password or blank for none
+int STIME = 120;                // time delay between sampling analog input in milliseconds
+int nREAD = 3;                  // number of samples to average
+bool FAHRENHEIT = true;         // display temperature in Fahrenheit
+int AIR = 220;                  // sensor value, in air
+int WATER = 640;                // sensor value, in water
+int MAXWATER = 120;             // max watering time, in seconds
+int MINWAIT = 300;              // min time, in seconds, to wait between waterings
+String WIFI_SSID = "SSID";
+String WIFI_PASS = "PASSWORD";
+String MQTT_SERV = "mqtt.local";
+uint16_t MQTT_PORT = 1883;
+String MQTT_TOPIC = "MQTT";
+String MQTT_USER = "";
+String MQTT_PASS = "";
+String onURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=1";
+String offURL = "http://sonoff.fqdn/api/relay/0?apikey=XXXXX&value=0";
 #endif // USERCONFIG
-//#define CONFIG  "/config.txt"     // SPIFFS config file (disabled)
 /** END USER CONFIG **/
 
+#define CONFIG  "/config.txt"     // SPIFFS config file
+
 /* includes */
-#include <ESP8266WiFi.h>          // Using 2.4.0-rc1 ESP8266 Arduino core from:
-#include <ESP8266mDNS.h>          // ** https://github.com/esp8266/Arduino
-#include <ESP8266HTTPClient.h>    // **
-#include <WiFiUdp.h>              // ** provides each of these libraries
-#ifdef OTA                        // **
-#include <ArduinoOTA.h>           // ** Optional Over-the-Air updates
-#endif                            // ******************************************
-#include <Adafruit_Sensor.h>      // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
-#include <Adafruit_BME280.h>
-#include "AdafruitIO_WiFi.h"      // install AdafruitIO and Adafruit_MQTT using Library Manager
-#include "Adafruit_MQTT.h"        // <-- then modify this file with #define MAXSUBSCRIPTIONS 10
-#include "Adafruit_MQTT_Client.h"
-#include "EspSaveCrash.h"         // https://github.com/krzychb/EspSaveCrash
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <time.h>
-#include <Math.h>
+#include <math.h>
 #include <FS.h>
 #include <pgmspace.h>               // for flash constants to save ram
 
-int Air = 240;                      // sensor value, in air
-int Water = 640;                    // sensor value, in water
-int interval = (Water - Air) / 3;   // split into dry, wet, soaked
-bool Fahrenheit = true;             // display Temp in Fahrenheit
+#include "EspSaveCrash.h"             // https://github.com/krzychb/EspSaveCrash
+#ifdef SAVE_CRASH_SPACE_SIZE
+#undef SAVE_CRASH_SPACE_SIZE
+#endif
+#define SAVE_CRASH_SPACE_SIZE 0x1000  // FLASH space reserved to store crash data
 
-/* BME280 config **/
+#ifdef OTA
+#include <ArduinoOTA.h>             // Over-the-Air updates
+#endif
+
+#ifdef BME  /* BME280 config **/
+#include <Adafruit_Sensor.h>        // install Adafruit_Sensor and Adafruit_BME280 using Library Manager
+#include <Adafruit_BME280.h>
 #include <Wire.h>
 #define BMEid 0x76                  // BME280 I2C id, default 0x77, alt is 0x76
 Adafruit_BME280 bme;                // using I2C comms
-bool BME = false;                   // is BME sensor present
+#else /* HDC1080 */
+#include <Wire.h>
+#include "ClosedCube_HDC1080.h"
+ClosedCube_HDC1080 hdc;
+#endif
+bool isBME = false;                   // is sensor present
 
-/** Adafruit IO Config **/
-AdafruitIO_WiFi io(IO_USERNAME, IO_KEY, WIFI_SSID, WIFI_PASS);
-AdafruitIO_Feed *IOtemp =     io.feed("temperature"); // ambient temperature
-AdafruitIO_Feed *IOhumid =    io.feed("humidity");    // relative humidity
-AdafruitIO_Feed *IOpressure = io.feed("pressure");    // atmospheric pressure
-AdafruitIO_Feed *IOmoist =    io.feed("moisture");    // soil moisture content
-AdafruitIO_Feed *IOwater =    io.feed("watering");    // state of water pump
-AdafruitIO_Feed *IOrelay =    io.feed("relay");       // ext relay contact
-AdafruitIO_Feed *IOdebug =    io.feed("debug");       // debugging messages
-AdafruitIO_Feed *IOfeed =     io.feed("feed");        // unused
+/* MQTT */
+#ifdef MQTT
+#include <PubSubClient.h>           // install PubSubClient using Library Manager
+WiFiClient wifiClient;
+PubSubClient MQTTclient(wifiClient);
+#endif
 
 /** Web Server **/
 #ifdef WWW
@@ -85,13 +93,24 @@ WiFiClient  telnetClient;
 #endif
 
 /** pin defs **/
-#define MOIST     A0    // analog input from soil moisture sensor
-#define MPOW      D2    // power output to soil moisture sensor
-#define BUTTON    D3    // flash button interrupt
-#define I2C_CLK   D5    // I2C clock (SCK)
-#define I2C_DAT   D6    // I2C data (SDI)
+#define MOIST A0    // moisture sensor analog input
+#define MPOW  5     // D1, moisture sensor power
+#define MGND  4     // D2, moisture sensor ground
+
+#ifdef BME
+#define BCLK  D6    // BME280 I2C SCL (clock)
+#define BDAT  D7    // BME280 I2C SDA (data)
+#define BGND  D5    // BME280 ground
+#define BPOW  D4    // BME280 power
+#else
+#define BCLK  D4    // HDC1080 I2C SCL (clock)
+#define BDAT  D5    // HDC1080 I2C SDA (data)
+#define BPOW  D6    // HDC1080 power
+#define BGND  D7    // HDC1080 ground
+#endif
 
 /** initialize vars **/
+int DELAY = 5000;
 int soil = 0, soil_l = 1023;
 float temp = 0, humid = 0;
 int temp_l = 0, humid_l = 0;
@@ -100,6 +119,7 @@ int pressure = 0, pressure_l = 0;
 int startCalibrate = 0;
 long deBounce = 0, wTime = 0;
 volatile int buttonState = HIGH;
+int interval = (WATER - AIR) / 3;   // split into dry, wet, soaked
 
 /** FLASH constants, to save on RAM **/
 static const PROGMEM char DOT[] = ".";
