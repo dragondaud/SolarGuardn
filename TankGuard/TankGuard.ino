@@ -105,6 +105,13 @@ void setup() {
 } // setup
 
 void loop() {
+  if (WiFi.localIP() == IPAddress(0,0,0,0)) {
+    String t = "Invalid null address";
+    mqttPublish("debug", t);
+    Serial.println(t);
+    delay(5000);
+    ESP.restart();
+  }
   checkSer();
   ArduinoOTA.handle();
   MQTTclient.loop();
