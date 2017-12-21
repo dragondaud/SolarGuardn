@@ -1,5 +1,5 @@
 # SolarGuardn
-## v0.7.05 PRE-RELEASE 04-Oct-2017
+## v0.8.00 PRE-RELEASE 21-Dec-2017
 ### by David Denney <dragondaud@gmail.com>
 
 Master repository: https://github.com/dragondaud/SolarGuardn
@@ -9,7 +9,7 @@ Master repository: https://github.com/dragondaud/SolarGuardn
 - Over-the-Air (OTA) updates from Arduino IDE
 - BME280 to read Temperature, Humidity, Pressure
 - Soil moisture reading
-- AdafruitIO/MQTT data logging
+- MQTT data logging
 - WiFi client
 - WiFi web server
 - Web server status page
@@ -26,7 +26,7 @@ Designed to run on an ESP-12E NodeMCU board with additional hardware,
 this sketch will monitor soil conditions, ambient temperature, humidity
 and atmospheric pressure, then report changes using MQTT, to AdafruitIO.
 
-A builtin WWW server provides direct access to current data, /reset request will reboot ESP.
+A built-in WWW server provides direct access to current data, /reset request will reboot ESP.
 
 Telnet server allows remote monitoring and debugging when serial is not practical.
 
@@ -38,8 +38,4 @@ Press FLASH button twice rapidly to store current running config to SPIFFS
 
 Some code is based on examples from the ESP8266, ArduinoOTA and other libraries.
 
-Sketch requires ESP8266 library v2.4.0, docs at: https://arduino-esp8266.readthedocs.io/en/2.4.0-rc1/
-
-You can use the release candidate by adding  this to File->Preferences->Additional Board Manager URLs:
-
-https://github.com/esp8266/Arduino/releases/download/2.4.0-rc1/package_esp8266com_index.json
+Sketch requires Arduino ESP8266 board library v2.4.0 from https://github.com/esp8266/Arduino#using-git-version
